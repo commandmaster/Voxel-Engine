@@ -1,4 +1,5 @@
 .vs
-out
-build
-lib
+out/
+build/
+lib/
+
