@@ -787,10 +787,10 @@ private:
     {
 		double accumulation = 0;
 		std::vector<double> frameTimes;
-		frameTimes.reserve(10);
 		Timer frameTimer;
 		
-		const int MAX_SAMPLES = 100; // Store the last 100 frames for averaging
+		constexpr int MAX_SAMPLES = 100; // Store the last 100 frames for averaging
+		frameTimes.reserve(MAX_SAMPLES);
 		
 		int frameCount = 0;
 		
@@ -806,7 +806,7 @@ private:
 			
 			if (frameTimes.size() > 0) {
 				double averageFrameTime = accumulation / frameTimes.size();
-				double fps = 1000.0 / averageFrameTime; // Assuming milliseconds
+				double fps = 1000000.0 / averageFrameTime; // Assuming milliseconds
 				
 				accumulation += frameTimes.back();
 					
@@ -823,7 +823,7 @@ private:
 			
 			frameTimer.stop();
 			
-			double frameTime = frameTimer.elapsedTime();
+			double frameTime = frameTimer.elapsedTime<std::chrono::microseconds>();
 			frameCount++;
 			
 			frameTimes.push_back(frameTime);
