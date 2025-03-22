@@ -7,18 +7,15 @@
 class FirstPersonCamera 
 {
 private:
-    // Camera position and orientation
     glm::vec3 position;
     float pitch;  // Vertical angle (look up/down)
     float yaw;    // Horizontal angle (look left/right)
     
-    // Camera parameters
     float fov;
     float aspectRatio;
     float nearClip;
     float farClip;
     
-    // Movement speed and rotation sensitivity
     float moveSpeed;
     float lookSensitivity;
     
@@ -28,10 +25,8 @@ private:
     glm::mat4 inverseViewMatrix;
     glm::mat4 inverseProjectionMatrix;
     
-    // Internal flags
     bool matricesDirty;
     
-    // Update matrices if needed
     void updateMatricesIfNeeded() 
     {
         if (matricesDirty) 
@@ -41,10 +36,8 @@ private:
         }
     }
     
-    // Recalculate all matrices
     void updateMatrices() 
     {
-        // Calculate view matrix
         glm::vec3 direction;
         direction.x = cos(glm::radians(yaw)) * cos(glm::radians(pitch));
         direction.y = sin(glm::radians(pitch));
@@ -57,7 +50,6 @@ private:
         viewMatrix = glm::lookAt(position, position + front, up);
         inverseViewMatrix = glm::inverse(viewMatrix);
         
-        // Calculate projection matrix
         projectionMatrix = glm::perspective(glm::radians(fov), aspectRatio, nearClip, farClip);
         inverseProjectionMatrix = glm::inverse(projectionMatrix);
     }
@@ -71,7 +63,7 @@ public:
         float far = 1000.0f
     ) : position(pos),
         pitch(0.0f),
-        yaw(-90.0f),  // -90 to initially look along negative z-axis
+        yaw(-90.0f),          
         fov(fovy),
         aspectRatio(aspect),
         nearClip(near),
@@ -128,17 +120,16 @@ public:
     
     void moveUp(float deltaTime) 
     {
-        position.y += moveSpeed * deltaTime;
+        position.y -= moveSpeed * deltaTime;
         matricesDirty = true;
     }
     
     void moveDown(float deltaTime) 
     {
-        position.y -= moveSpeed * deltaTime;
+        position.y += moveSpeed * deltaTime;
         matricesDirty = true;
     }
-    
-    // Look/rotation controls
+
     void look(float xOffset, float yOffset) 
     {
         xOffset *= lookSensitivity;
@@ -147,14 +138,12 @@ public:
         yaw += xOffset;
         pitch += yOffset;
         
-        // Constrain pitch to avoid gimbal lock
         if (pitch > 89.0f) pitch = 89.0f;
         if (pitch < -89.0f) pitch = -89.0f;
         
         matricesDirty = true;
     }
     
-    // Setters
     void setPosition(const glm::vec3& pos) 
     {
         position = pos;
@@ -166,7 +155,6 @@ public:
         pitch = pitchValue;
         yaw = yawValue;
         
-        // Constrain pitch to avoid gimbal lock
         if (pitch > 89.0f) pitch = 89.0f;
         if (pitch < -89.0f) pitch = -89.0f;
         
@@ -202,7 +190,6 @@ public:
         lookSensitivity = sensitivity;
     }
     
-    // Getters
     glm::vec3 getPosition() const 
     {
         return position;

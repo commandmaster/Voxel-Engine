@@ -14,6 +14,7 @@
 #include "imgui_impl_vulkan.h"
 
 #include "Camera.h"
+#include "FirstPersonCamera.h"
 #include "Timer.h"
 
 #include <iostream>
@@ -362,6 +363,7 @@ private:
     {
         glm::mat4 view_inverse;
         glm::mat4 proj_inverse;
+        glm::vec3 position;
     };
 
 	struct Constants 
@@ -568,7 +570,7 @@ private:
 
     const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
-    const float MOVEMENT_SENS = 0.003f;
+    const float MOVEMENT_SENS = 1.f;
 
     uint32_t currentFrame = 0;
 
@@ -601,16 +603,14 @@ private:
 	std::vector<VkFence> inFlightFences;
     std::vector<VkFence> imagesInFlight;
 
-
     bool framebufferResized = false;
-
     
     UniformData uniformData;
     
     std::vector<ManagedBuffer> uniformBuffersRT;
 
     const float FOV = 60.0f;
-    Camera camera;
+    FirstPersonCamera fpsCamera;
 
     double lastMouseX = 0.0;
     double lastMouseY = 0.0;
@@ -640,7 +640,15 @@ private:
     ManagedBuffer missShaderBindingTable;
     ManagedBuffer closestHitShaderBindingTable;
 
-    std::vector<Sphere> spheres = { { {0, 0, 0, 1.0f} }, { {2, 0, 0, 2.0f} } };
+    std::vector<Sphere> spheres = { 
+		{ {0, 0, 0, 1.0f} }, 
+		{ {2, 0, 0, 2.0f} }, 
+		{ {-3, 1, 2, 1.5f} }, 
+		{ {4, -2, 1, 2.5f} }, 
+		{ {0, 3, -4, 1.2f} }, 
+		{ {-1, -1, -1, 0.8f} }, 
+		{ {5, 5, 5, 3.0f} } 
+	};    
     ManagedBuffer sphereBuffer;
     
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
@@ -747,7 +755,7 @@ private:
 
     void createCamera();
 
-    void handleInput(GLFWwindow* window);
+    void handleInput(GLFWwindow* window, float dt);
 
     
     void initVulkan() 
@@ -793,12 +801,17 @@ private:
 		frameTimes.reserve(MAX_SAMPLES);
 		
 		int frameCount = 0;
+
+        float dt = 0;
 		
 		while (!glfwWindowShouldClose(window)) {
 			frameTimer.start();
 			
 			glfwPollEvents();
-			handleInput(window);
+
+            if (!frameTimes.empty()) dt =  frameTimes.back() * 0.000001f;
+
+			handleInput(window, dt);
 			
 			ImGui_ImplVulkan_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
@@ -812,7 +825,7 @@ private:
 					
 				ImGui::Begin("Performance Metrics");
 				ImGui::Text("FPS: %.1f", fps);
-				ImGui::Text("Frame Time: %.2f ms", averageFrameTime);
+				ImGui::Text("Frame Time: %.2f micro seconds", averageFrameTime);
 				ImGui::Text("Frame Count: %d", frameCount);
 				ImGui::End();
 			}

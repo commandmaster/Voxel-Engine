@@ -1,7 +1,15 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
 
-layout(location = 0) rayPayloadInEXT vec3 payload;
+struct RayPayload 
+{
+    vec3 color;
+    float distance;
+    vec3 normal;
+    uint seed;
+};
+
+layout(location = 0) rayPayloadInEXT RayPayload payload;
 hitAttributeEXT vec3 attribs;
 
 layout(push_constant) uniform Constants {
@@ -25,5 +33,6 @@ void main() {
     vec3 diffuseColor = constants.lightColor * materialColor * diffuse;
     
     // Final color is the sum of ambient and diffuse
-    payload = ambient + diffuseColor;
+    payload.color = ambient + diffuseColor;
+    payload.normal = normal;
 }

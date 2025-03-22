@@ -3,27 +3,60 @@
 
 layout(binding = 1, rgba32f) uniform image2D storageImage;
 layout(binding = 0) uniform accelerationStructureEXT topLevelAS;
-layout(binding = 2) uniform Uniforms {
+
+layout(binding = 2) uniform Uniforms 
+{
     mat4 viewInverse;
     mat4 projInverse;
+    vec3 position;
 } uniforms;
 
-layout(location = 0) rayPayloadEXT vec3 payload;
+struct RayPayload 
+{
+    vec3 color;
+    float distance;
+    vec3 normal;
+    uint seed;
+};
+
+layout(location = 0) rayPayloadEXT RayPayload payload;
+
+uint initRand(uint seed) 
+{
+    seed = (seed ^ 61) ^ (seed >> 16);
+    seed *= 9;
+    seed = seed ^ (seed >> 4);
+    seed *= 0x27d4eb2d;
+    seed = seed ^ (seed >> 15);
+    return seed;
+}
+
+float rand(inout uint seed) 
+{
+    seed = initRand(seed);
+    return float(seed) / float(0xffffffffu);
+}
 
 void main() {
     vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
-    vec2 uv = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
+    vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
     
-    // Convert to NDC
-    vec4 rayDirClip = vec4(uv * 2.0 - 1.0, -1.0, 1.0);
-    
-    // Convert to view space
-    vec4 rayDirView = uniforms.projInverse * rayDirClip;
-    rayDirView = vec4(rayDirView.xy, -1.0, 0.0);
-    
-    // Convert to world space
-    vec3 rayDirection = normalize((uniforms.viewInverse * rayDirView).xyz);
-    vec3 rayOrigin = (uniforms.viewInverse * vec4(0, 0, 0, 1)).xyz;
+    vec2 d = inUV * 2.0 - 1.0;
+
+    vec4 origin = uniforms.viewInverse * vec4(0, 0, 0, 1);        
+    vec4 target = uniforms.projInverse * vec4(d.x, d.y, 1, 1);
+
+    target = uniforms.viewInverse * vec4(target.xyz / target.w, 1);
+
+    vec3 direction = normalize(target.xyz - origin.xyz);
+
+    payload.color = vec3(0.0);
+    payload.distance = 0.0;
+    payload.normal = vec3(0.0);
+    payload.seed = initRand(
+        uint(gl_LaunchIDEXT.x) + 
+        uint(gl_LaunchIDEXT.y) * gl_LaunchSizeEXT.x + 
+        uint(gl_LaunchIDEXT.z) * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y);
 
     float tMin = 0.001;
     float tMax = 1000.0;
@@ -35,13 +68,13 @@ void main() {
         0,                  // sbtRecordOffset
         0,                  // sbtRecordStride
         0,                  // missIndex
-        rayOrigin,          // origin
+        origin.xyz,          // origin
         tMin,              // Tmin
-        rayDirection,       // direction
+        direction,       // direction
         tMax,              // Tmax
         0                  // payload
     );
 
     // If we hit nothing, miss shader will have written the payload
-    imageStore(storageImage, ivec2(gl_LaunchIDEXT.xy), vec4(payload, 1.0));
+    imageStore(storageImage, ivec2(gl_LaunchIDEXT.xy), vec4(payload.color.xyz, 1.0));
 }

@@ -107,7 +107,7 @@ void VoxelEngine::mouseCallback(GLFWwindow* window, double xpos, double ypos)
     app->lastMouseX = xpos;
     app->lastMouseY = ypos;
     
-    app->camera.rotate(xoffset, -yoffset);
+	app->fpsCamera.look(xoffset, -yoffset);
 }
 
 void VoxelEngine::initWindow()
@@ -997,7 +997,7 @@ void VoxelEngine::createTLAS()
     instance.transform = transformMatrix;
     instance.instanceCustomIndex = 0;
     instance.mask = 0xFF;
-    instance.instanceShaderBindingTableRecordOffset = 0;
+    instance.instanceShaderBindingTableRecordOffset = 2;
 	instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR | VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
 	instance.accelerationStructureReference = bottomLevelAccelerationStructure.deviceAddress;
 
@@ -1186,8 +1186,8 @@ void VoxelEngine::createShaderBindingTables()
 }
 
 
-void VoxelEngine::createDescriptorSetsRT() {
-    // Create a descriptor pool with enough resources for MAX_FRAMES_IN_FLIGHT
+void VoxelEngine::createDescriptorSetsRT() 
+{
     std::array<VkDescriptorPoolSize, 4> poolSizes{};
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
     poolSizes[0].descriptorCount = MAX_FRAMES_IN_FLIGHT;
@@ -1202,13 +1202,13 @@ void VoxelEngine::createDescriptorSetsRT() {
     poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
     poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
     poolInfo.pPoolSizes = poolSizes.data();
-    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT; // Allocate one set per frame
+    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT; 
 
-    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) 
+	{
         throw std::runtime_error("failed to create descriptor pool!");
     }
 
-    // Allocate descriptor sets for each frame
     descriptorSetsRT.resize(MAX_FRAMES_IN_FLIGHT);
     
     std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayoutRT);
@@ -1219,11 +1219,11 @@ void VoxelEngine::createDescriptorSetsRT() {
     allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     allocInfo.pSetLayouts = layouts.data();
 
-    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()) != VK_SUCCESS) {
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()) != VK_SUCCESS) 
+	{
         throw std::runtime_error("failed to allocate descriptor sets!");
     }
 
-    // Now update all descriptor sets
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
 	{
         updateDescriptorSetRT(i);
@@ -1234,7 +1234,6 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
 {
     std::vector<VkWriteDescriptorSet> descriptorWrites;
 
-    // Binding 0: Top-level acceleration structure
     VkWriteDescriptorSetAccelerationStructureKHR accelWriteInfo{};
     accelWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
     accelWriteInfo.accelerationStructureCount = 1;
@@ -1249,7 +1248,6 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     accelWrite.descriptorCount = 1;
     descriptorWrites.push_back(accelWrite);
 
-    // Binding 1: Output storage image
     VkDescriptorImageInfo outputImageInfo{};
     outputImageInfo.imageView = outputImage.view;
     outputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -1263,7 +1261,6 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     outputImageWrite.pImageInfo = &outputImageInfo;
     descriptorWrites.push_back(outputImageWrite);
 
-    // Binding 2: Uniform buffer
     VkDescriptorBufferInfo uniformBufferInfo{};
     uniformBufferInfo.buffer = uniformBuffersRT[index].handle;
     uniformBufferInfo.offset = 0;
@@ -1278,7 +1275,6 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     uniformWrite.pBufferInfo = &uniformBufferInfo;
     descriptorWrites.push_back(uniformWrite);
 
-    // Binding 3: Sphere storage buffer
     VkDescriptorBufferInfo sphereBufferInfo{};
     sphereBufferInfo.buffer = sphereBuffer.handle;
     sphereBufferInfo.offset = 0;
@@ -1293,7 +1289,6 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     sphereWrite.pBufferInfo = &sphereBufferInfo;
     descriptorWrites.push_back(sphereWrite);
 
-    // Binding 4: Accumulation storage image
     VkDescriptorImageInfo accumulationImageInfo{};
 	accumulationImageInfo.imageView = accumulationImage.view;
 	accumulationImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
@@ -1307,7 +1302,6 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     accumulationImageWrite.pImageInfo = &accumulationImageInfo;
     descriptorWrites.push_back(accumulationImageWrite);
 
-    // Update the descriptor set
     vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
@@ -1467,9 +1461,9 @@ void VoxelEngine::createRayTracingPipeline()
 		proceduralHitGroup.sType = VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR;
 		proceduralHitGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_PROCEDURAL_HIT_GROUP_KHR;
 		proceduralHitGroup.generalShader = VK_SHADER_UNUSED_KHR;
-		proceduralHitGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1; // Index of closest hit
+		proceduralHitGroup.closestHitShader = static_cast<uint32_t>(shaderStages.size()) - 1; 
 		proceduralHitGroup.anyHitShader = VK_SHADER_UNUSED_KHR;
-		proceduralHitGroup.intersectionShader = static_cast<uint32_t>(shaderStages.size()) - 2; // Index of intersection
+		proceduralHitGroup.intersectionShader = static_cast<uint32_t>(shaderStages.size()) - 2; 
 
 		shaderGroups.push_back(proceduralHitGroup);
 	}
@@ -1501,6 +1495,7 @@ void VoxelEngine::createUniformBuffers()
 	uniformBuffersRT.resize(MAX_FRAMES_IN_FLIGHT);
 	uniformData.view_inverse = glm::mat4(1.0f);
     uniformData.proj_inverse = glm::mat4(1.0f);
+	uniformData.position = glm::vec3(0.f, 0.f, 0.f);
 
 
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
@@ -1719,13 +1714,9 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
 
 void VoxelEngine::updateUniformBuffersRT()
 {
-	if (!camera.getWasUpdated()) return; // No need to update buffers when the camera hasn't changed
-
-	camera.updateView();
-	camera.setWasUpdated(false);
-			
-	uniformData.view_inverse = camera.getInvView();
-	uniformData.proj_inverse = camera.getInvProj();
+	uniformData.view_inverse = fpsCamera.getInverseViewMatrix();
+	uniformData.proj_inverse = fpsCamera.getInverseProjectionMatrix();
+	uniformData.position = fpsCamera.getPosition();
 
 	for (auto& ubo : uniformBuffersRT)
 	{
@@ -1745,38 +1736,45 @@ void VoxelEngine::updateUniformBuffersRT()
 
 void VoxelEngine::createCamera()
 {
-	camera.setMouseSensitivity(0.002f);
-	camera.setPerspective(FOV, static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
-	camera.setPosition({0.0f, 0.0f, 5.0f});
-    camera.lookAt({0.0f, 0.0f, 0.0f});	
+	fpsCamera = FirstPersonCamera({ 0.0f, 0.0f, 0.0f }, FOV, static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
 }
 
-void VoxelEngine::handleInput(GLFWwindow* window)
+void VoxelEngine::handleInput(GLFWwindow* window, float dt)
 {
     // Movement speed with shift for fast movement
     float moveSpeed = MOVEMENT_SENS;
     if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
         moveSpeed *= 5.0f;  // Move faster when holding shift
     
-    // Forward/backward along camera's forward vector
-    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.move(camera.getForward() * moveSpeed);
-    if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.move(-camera.getForward() * moveSpeed);
+	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+	{
+		fpsCamera.moveForward(dt * moveSpeed);
+	}
+		
+	if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
+	{
+		fpsCamera.moveBackward(dt * moveSpeed);
+	}
     
-    // Strafe left/right along camera's right vector
-    if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.move(-camera.getRight() * moveSpeed);
-    if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.move(camera.getRight() * moveSpeed);
+	if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
+	{
+		fpsCamera.moveLeft(dt * moveSpeed);
+	}
+
+	if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
+	{
+		fpsCamera.moveRight(dt * moveSpeed);
+	}
         
-    // Up/down movement along world up vector (typical in debug cameras)
-    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
-        camera.move(glm::vec3(0.0f, 1.0f, 0.0f) * moveSpeed);
-    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
-        camera.move(glm::vec3(0.0f, -1.0f, 0.0f) * moveSpeed);
+	if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+	{
+		fpsCamera.moveUp(dt * moveSpeed);
+	}
+	if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+	{
+		fpsCamera.moveDown(dt * moveSpeed);
+	}
         
-    // Toggle cursor lock
     if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) 
     {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
@@ -1809,7 +1807,6 @@ void VoxelEngine::recreateSwapChain()
     cleanupSwapChain();
 	cleanupSyncObjects();
 
-    // Recreate swapchain resources
     createSwapChain();
     createImageViews();
     createStorageImages();
@@ -1819,10 +1816,7 @@ void VoxelEngine::recreateSwapChain()
 	imguiHandler.destroyFramebuffers(device);
     imguiHandler.createImguiFramebuffers(device, swapChainImageViews, swapChainExtent);
 
-    // Update camera and descriptors
-    camera.setPerspective(FOV, 
-        static_cast<float>(swapChainExtent.width) / 
-        static_cast<float>(swapChainExtent.height));
+	fpsCamera.setAspectRatio(static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
     updateDescriptorSetsRT();
 
 	currentFrame = 0;
