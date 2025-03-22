@@ -80,6 +80,7 @@ PFN_vkGetAccelerationStructureBuildSizesKHR VoxelEngine::vkGetAccelerationStruct
 PFN_vkCreateAccelerationStructureKHR VoxelEngine::vkCreateAccelerationStructureKHR = nullptr;
 PFN_vkGetAccelerationStructureDeviceAddressKHR VoxelEngine::vkGetAccelerationStructureDeviceAddressKHR = nullptr;
 PFN_vkCmdBuildAccelerationStructuresKHR VoxelEngine::vkCmdBuildAccelerationStructuresKHR = nullptr;
+PFN_vkBuildAccelerationStructuresKHR VoxelEngine::vkBuildAccelerationStructuresKHR = nullptr;
 PFN_vkDestroyAccelerationStructureKHR VoxelEngine::vkDestroyAccelerationStructureKHR = nullptr;
 PFN_vkGetRayTracingShaderGroupHandlesKHR VoxelEngine::vkGetRayTracingShaderGroupHandlesKHR = nullptr;
 PFN_vkGetBufferDeviceAddressKHR VoxelEngine::vkGetBufferDeviceAddressKHR = nullptr;
@@ -552,6 +553,11 @@ void VoxelEngine::createLogicalDevice()
 			vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR")
 		);
 
+	vkBuildAccelerationStructuresKHR = 
+		reinterpret_cast<PFN_vkBuildAccelerationStructuresKHR>(
+			vkGetDeviceProcAddr(device, "vkBuildAccelerationStructuresKHR")
+		);
+
 	vkDestroyAccelerationStructureKHR = 
 		reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
 			vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR")
@@ -991,13 +997,14 @@ void VoxelEngine::createTLAS()
 	VkTransformMatrixKHR transformMatrix = {
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
-        0.0f, 0.0f, 1.0f, 0.0f};
+        0.0f, 0.0f, 1.0f, 0.0f
+	};
 
     VkAccelerationStructureInstanceKHR instance{};
     instance.transform = transformMatrix;
     instance.instanceCustomIndex = 0;
     instance.mask = 0xFF;
-    instance.instanceShaderBindingTableRecordOffset = 2;
+    instance.instanceShaderBindingTableRecordOffset = 0;
 	instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR | VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
 	instance.accelerationStructureReference = bottomLevelAccelerationStructure.deviceAddress;
 
@@ -1060,8 +1067,10 @@ void VoxelEngine::createTLAS()
     createInfo.size = sizeInfo.accelerationStructureSize;
     createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
+
     VkAccelerationStructureKHR tlasHandle;
-    if (vkCreateAccelerationStructureKHR(device, &createInfo, nullptr, &tlasHandle) != VK_SUCCESS) {
+    if (vkCreateAccelerationStructureKHR(device, &createInfo, nullptr, &tlasHandle) != VK_SUCCESS)
+	{
         throw std::runtime_error("Failed to create TLAS");
     }
 
@@ -1083,7 +1092,6 @@ void VoxelEngine::createTLAS()
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRanges.data());
     flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
 
-    // Cleanup
     ScratchBuffer::destroyScratchBuffer(vmaAllocator, scratchBuffer);
     instancesBuffer.destroy(vmaAllocator);
 
@@ -1096,6 +1104,7 @@ void VoxelEngine::createTLAS()
     addressInfo.accelerationStructure = tlasHandle;
     topLevelAccelerationStructure.deviceAddress = 
         vkGetAccelerationStructureDeviceAddressKHR(device, &addressInfo);
+	
 }
 
 void VoxelEngine::deleteAS(AccelerationStructure& accelerationStructure)
@@ -1114,7 +1123,6 @@ void VoxelEngine::createShaderBindingTables()
                                              rtProperties.shaderGroupBaseAlignment);
     const uint32_t groupCount = static_cast<uint32_t>(shaderGroups.size());
     
-    // Create a single SBT buffer for simplicity
     VkDeviceSize sbtSize = groupCount * handleSizeAligned;
     
     raygenShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
@@ -1141,24 +1149,20 @@ void VoxelEngine::createShaderBindingTables()
         device, rtPipeline, 0, groupCount, groupCount * handleSize, shaderHandleStorage.data()
     );
     
-    // Staging buffer
     ManagedBuffer stagingBuffer;
     stagingBuffer.create(vmaAllocator, device, sbtSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         ManagedBuffer::BufferType::HostVisible);
     
-    // Copy shader handles to staging buffer with proper alignment
     uint8_t* data = nullptr;
     vmaMapMemory(vmaAllocator, stagingBuffer.allocation, (void**)&data);
     
-    // Copy each shader group handle
     for (uint32_t i = 0; i < groupCount; i++) {
         memcpy(data + i * handleSizeAligned, shaderHandleStorage.data() + i * handleSize, handleSize);
     }
     
     vmaUnmapMemory(vmaAllocator, stagingBuffer.allocation);
     
-    // Copy from staging to device-local SBT buffers
     VkCommandBuffer cmd = createCommandBuffer(device, commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
     
     VkBufferCopy copyRegion{};
@@ -1179,7 +1183,6 @@ void VoxelEngine::createShaderBindingTables()
     flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
     stagingBuffer.destroy(vmaAllocator);
     
-    // Store device addresses
     raygenShaderBindingTable.deviceAddress = getBufferDeviceAddress(raygenShaderBindingTable.handle);
     missShaderBindingTable.deviceAddress = getBufferDeviceAddress(missShaderBindingTable.handle);
     closestHitShaderBindingTable.deviceAddress = getBufferDeviceAddress(closestHitShaderBindingTable.handle);
