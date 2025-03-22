@@ -14,6 +14,7 @@
 #include "imgui_impl_vulkan.h"
 
 #include "Camera.h"
+#include "Timer.h"
 
 #include <iostream>
 #include <fstream>
@@ -377,7 +378,7 @@ private:
         VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
 
 
-        void initImgui(GLFWwindow* window, VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice logicalDevice, uint32_t queueFamilyIndex, VkQueue queue, uint32_t swapChainImagesCount)
+        void initImgui(GLFWwindow* window, VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice logicalDevice, uint32_t queueFamilyIndex, VkQueue queue, uint32_t swapChainImagesCount, std::vector<VkImageView>& swapChainImageViews, VkExtent2D swapChainExtent, VkFormat swapChainImageFormat)
         {
             IMGUI_CHECKVERSION();
             ImGui::CreateContext();
@@ -402,10 +403,51 @@ private:
             initInfo.MinImageCount = swapChainImagesCount;
             initInfo.CheckVkResultFn = ImguiHandler::IMGUI_ERROR_HANDLER;
 
+            createImguiRenderPass(logicalDevice, swapChainImageFormat);
+            createImguiFramebuffers(logicalDevice, swapChainImageViews, swapChainExtent);
+
+            initInfo.RenderPass = imguiRenderPass;
+
+            ImGui_ImplVulkan_Init(&initInfo);
         }
+
+		void createImguiFramebuffers(VkDevice device, std::vector<VkImageView>& swapChainImageViews, VkExtent2D swapChainExtent) 
+        {
+			imguiFramebuffers.resize(swapChainImageViews.size());
+			for (size_t i = 0; i < swapChainImageViews.size(); i++) 
+            {
+				VkImageView attachments[] = { swapChainImageViews[i] };
+				VkFramebufferCreateInfo framebufferInfo{};
+				framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+				framebufferInfo.renderPass = imguiRenderPass;
+				framebufferInfo.attachmentCount = 1;
+				framebufferInfo.pAttachments = attachments;
+				framebufferInfo.width = swapChainExtent.width;
+				framebufferInfo.height = swapChainExtent.height;
+				framebufferInfo.layers = 1;
+
+                auto res = vkCreateFramebuffer(device, &framebufferInfo, nullptr, &imguiFramebuffers[i]);
+                IMGUI_ERROR_HANDLER(res);
+			}
+		}
+
+        void destroyFramebuffers(VkDevice device) 
+        {
+			for (auto& fb : imguiFramebuffers) vkDestroyFramebuffer(device, fb, nullptr);
+			imguiFramebuffers.clear();
+		}
 
         void destroy(VkDevice device)
         {
+
+            vkDestroyRenderPass(device, imguiRenderPass, nullptr);
+
+            destroyFramebuffers(device);
+
+            ImGui_ImplVulkan_Shutdown();
+			ImGui_ImplGlfw_Shutdown();
+			ImGui::DestroyContext();
+
             vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
             imguiDescriptorPool = VK_NULL_HANDLE;
         }
@@ -416,6 +458,7 @@ private:
             {
                 throw std::runtime_error("Imgui Handler was not destroyed prior to going out of scope. Call ImguiHandler.destroy() to explicitly destroy the handler");
             }
+
         }
 
     private:
@@ -495,26 +538,7 @@ private:
             IMGUI_ERROR_HANDLER(res);
 		}
 
-        void createImguiFramebuffers(VkDevice device, std::vector<VkImageView>& swapChainImageViews, VkExtent2D swapChainExtent) 
-        {
-			imguiFramebuffers.resize(swapChainImageViews.size());
-			for (size_t i = 0; i < swapChainImageViews.size(); i++) 
-            {
-				VkImageView attachments[] = { swapChainImageViews[i] };
-				VkFramebufferCreateInfo framebufferInfo{};
-				framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
-				framebufferInfo.renderPass = imguiRenderPass;
-				framebufferInfo.attachmentCount = 1;
-				framebufferInfo.pAttachments = attachments;
-				framebufferInfo.width = swapChainExtent.width;
-				framebufferInfo.height = swapChainExtent.height;
-				framebufferInfo.layers = 1;
-
-                auto res = vkCreateFramebuffer(device, &framebufferInfo, nullptr, &imguiFramebuffers[i]);
-                IMGUI_ERROR_HANDLER(res);
-			}
-		}
-
+        
         static void IMGUI_ERROR_HANDLER(VkResult err)
         {
             if (err != VK_SUCCESS)
@@ -542,7 +566,8 @@ private:
     const uint32_t WIDTH = 800;
     const uint32_t HEIGHT = 600;
 
-    const uint32_t MAX_FRAMES_IN_FLIGHT = 1;
+    const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+
     const float MOVEMENT_SENS = 0.003f;
 
     uint32_t currentFrame = 0;
@@ -749,7 +774,7 @@ private:
 		createDescriptorSetsRT();        
 
         auto queueFamilyIndicies = findQueueFamilies(physicalDevice);
-        imguiHandler.initImgui(window, instance, physicalDevice, device, queueFamilyIndicies.graphicsFamily.value(), graphicsQueue, static_cast<uint32_t>(swapChainImages.size()));
+        imguiHandler.initImgui(window, instance, physicalDevice, device, queueFamilyIndicies.graphicsFamily.value(), graphicsQueue, static_cast<uint32_t>(swapChainImages.size()), swapChainImageViews, swapChainExtent, swapChainImageFormat);
     }
 
     void recreateSwapChain();
@@ -760,15 +785,57 @@ private:
 
     void mainLoop() 
     {
-        while (!glfwWindowShouldClose(window))
-        {
-            glfwPollEvents();
-            handleInput(window);
-            drawFrameRT();
-        }
-
-        vkDeviceWaitIdle(device);
-    }
+		double accumulation = 0;
+		std::vector<double> frameTimes;
+		frameTimes.reserve(10);
+		Timer frameTimer;
+		
+		const int MAX_SAMPLES = 100; // Store the last 100 frames for averaging
+		
+		int frameCount = 0;
+		
+		while (!glfwWindowShouldClose(window)) {
+			frameTimer.start();
+			
+			glfwPollEvents();
+			handleInput(window);
+			
+			ImGui_ImplVulkan_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
+			
+			if (frameTimes.size() > 0) {
+				double averageFrameTime = accumulation / frameTimes.size();
+				double fps = 1000.0 / averageFrameTime; // Assuming milliseconds
+				
+				accumulation += frameTimes.back();
+					
+				ImGui::Begin("Performance Metrics");
+				ImGui::Text("FPS: %.1f", fps);
+				ImGui::Text("Frame Time: %.2f ms", averageFrameTime);
+				ImGui::Text("Frame Count: %d", frameCount);
+				ImGui::End();
+			}
+			
+			ImGui::ShowDemoWindow();
+			ImGui::Render();
+			drawFrameRT();
+			
+			frameTimer.stop();
+			
+			double frameTime = frameTimer.elapsedTime();
+			frameCount++;
+			
+			frameTimes.push_back(frameTime);
+			
+			if (frameTimes.size() > MAX_SAMPLES) {
+				accumulation -= frameTimes.front();
+				frameTimes.erase(frameTimes.begin());
+			}
+		}
+		
+		vkDeviceWaitIdle(device);
+	}
 
     void cleanup();
 

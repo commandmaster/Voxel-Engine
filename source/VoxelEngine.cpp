@@ -90,7 +90,12 @@ PFN_vkCmdTraceRaysKHR VoxelEngine::vkCmdTraceRaysKHR = nullptr;
 void VoxelEngine::mouseCallback(GLFWwindow* window, double xpos, double ypos)
 {
     VoxelEngine* app = static_cast<VoxelEngine*>(glfwGetWindowUserPointer(window));
-    
+
+	if (glfwGetInputMode(app->window, GLFW_CURSOR) == GLFW_CURSOR_NORMAL)
+	{
+		return;
+	}
+
     if (app->firstMouse) {
         app->lastMouseX = xpos;
         app->lastMouseY = ypos;
@@ -1642,7 +1647,8 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
         VK_FILTER_LINEAR
     );
 
-    // Transition swapchain image to PRESENT_SRC_KHR
+
+	// Transition swapchain image to PRESENT_SRC_KHR
     VkImageMemoryBarrier presentBarrier{};
     presentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
     presentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
@@ -1677,6 +1683,38 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
         0, nullptr,
         1, &barrier
     );
+
+	VkImageMemoryBarrier imguiBarrier{};
+    imguiBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    imguiBarrier.oldLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    imguiBarrier.newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+    imguiBarrier.image = swapChainImages[imageIndex];
+    imguiBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    imguiBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    imguiBarrier.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        0, 0, nullptr, 0, nullptr, 1, &imguiBarrier
+    );
+
+    // Render ImGui
+    VkRenderPassBeginInfo renderPassInfo{};
+    renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
+    renderPassInfo.renderPass = imguiHandler.imguiRenderPass;
+    renderPassInfo.framebuffer = imguiHandler.imguiFramebuffers[imageIndex];
+    renderPassInfo.renderArea.extent = swapChainExtent;
+    renderPassInfo.clearValueCount = 1;
+    VkClearValue clearColor = {{{0.0f, 0.0f, 0.0f, 1.0f}}};
+    renderPassInfo.pClearValues = &clearColor;
+
+    vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+    ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+    vkCmdEndRenderPass(commandBuffer);
+
+
 }
 
 void VoxelEngine::updateUniformBuffersRT()
@@ -1777,6 +1815,9 @@ void VoxelEngine::recreateSwapChain()
     createStorageImages();
 	createSyncObjects();
     createCommandBuffers(); 
+
+	imguiHandler.destroyFramebuffers(device);
+    imguiHandler.createImguiFramebuffers(device, swapChainImageViews, swapChainExtent);
 
     // Update camera and descriptors
     camera.setPerspective(FOV, 
@@ -1908,25 +1949,29 @@ void VoxelEngine::cleanupSyncObjects()
 
 void VoxelEngine::cleanup()
 {
-	imguiHandler.destroy(device);
 
 	cleanupRayTracing();
 
 	cleanupSwapChain();
 	cleanupSyncObjects();
+	
 
 	vkDestroyCommandPool(device, commandPool, nullptr);
+
 
 	if (descriptorPool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device, descriptorPool, nullptr);
 
 	vmaDestroyAllocator(vmaAllocator);
-	vkDestroyDevice(device, nullptr);
 
 	if (enableValidationLayers)
 	{
 		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
 	}
 
+
+	imguiHandler.destroy(device);
+
+	vkDestroyDevice(device, nullptr);
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
 
