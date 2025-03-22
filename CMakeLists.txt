@@ -45,8 +45,8 @@ add_library(imgui STATIC
 
     # Add ImGui backends
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
-    ${imgui_SOURCE_DIR}/backends/imgui_impl_opengl3.cpp
- "source/VoxelEngine.hpp" "source/main.cpp" "source/rasterizer.cpp"  "source/Camera.h")
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
+ "source/VoxelEngine.hpp" "source/main.cpp" "source/rasterizer.cpp"  "source/Camera.h" "source/Device.h")
 
 target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
@@ -66,7 +66,7 @@ include_directories(${glm_SOURCE_DIR})
 
 target_link_libraries(imgui PRIVATE glfw)
 
-add_executable (VoxelEngine "source/VoxelEngine.cpp" "source/VoxelEngine.hpp" "source/main.cpp" "source/rasterizer.cpp"  "source/Camera.h")
+add_executable (VoxelEngine "source/VoxelEngine.cpp" "source/VoxelEngine.hpp" "source/main.cpp" "source/rasterizer.cpp"  "source/Camera.h" "source/Device.h")
 set_property(TARGET VoxelEngine PROPERTY CXX_STANDARD 20)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

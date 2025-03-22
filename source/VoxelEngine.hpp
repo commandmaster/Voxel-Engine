@@ -9,6 +9,10 @@
 #include <shaderc/shaderc.hpp>
 #include <glm\glm.hpp>
 
+#include "imgui.h"
+#include "imgui_impl_glfw.h"
+#include "imgui_impl_vulkan.h"
+
 #include "Camera.h"
 
 #include <iostream>
@@ -199,6 +203,9 @@ private:
     bool _isDestroyed = true;
 };
 
+
+
+
 class StorageImage
 {
 public:
@@ -310,12 +317,17 @@ private:
 };
 
 
+
+
 struct AccelerationStructure
 {
     VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
     uint64_t deviceAddress;
     ManagedBuffer buffer;
 };
+
+
+
 
 
 class VoxelEngine 
@@ -350,6 +362,169 @@ private:
         glm::mat4 view_inverse;
         glm::mat4 proj_inverse;
     };
+
+	struct Constants 
+    {
+	    alignas(16) glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 1.0f, 1.0f));
+		alignas(16) glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
+		alignas(16) glm::vec3 ambientColor = glm::vec3(0.1f, 0.1f, 0.1f);	
+    } constants;
+
+    struct ImguiHandler
+    {
+        VkRenderPass imguiRenderPass;
+        std::vector<VkFramebuffer> imguiFramebuffers;
+        VkDescriptorPool imguiDescriptorPool = VK_NULL_HANDLE;
+
+
+        void initImgui(GLFWwindow* window, VkInstance instance, VkPhysicalDevice physicalDevice, VkDevice logicalDevice, uint32_t queueFamilyIndex, VkQueue queue, uint32_t swapChainImagesCount)
+        {
+            IMGUI_CHECKVERSION();
+            ImGui::CreateContext();
+            ImGuiIO& io = ImGui::GetIO(); (void)io;
+
+            ImGui::StyleColorsDark();
+
+            ImGui_ImplGlfw_InitForVulkan(window, true);
+            ImGui_ImplVulkan_InitInfo initInfo = {};
+            initInfo.Instance = instance;
+            initInfo.PhysicalDevice = physicalDevice;
+            initInfo.Device = logicalDevice;
+            initInfo.QueueFamily = queueFamilyIndex;
+            initInfo.Queue = queue;
+            initInfo.PipelineCache = VK_NULL_HANDLE;
+
+            initDescriptorPool(logicalDevice);
+            initInfo.DescriptorPool = imguiDescriptorPool;
+
+            initInfo.Allocator = nullptr;
+            initInfo.ImageCount = swapChainImagesCount;
+            initInfo.MinImageCount = swapChainImagesCount;
+            initInfo.CheckVkResultFn = ImguiHandler::IMGUI_ERROR_HANDLER;
+
+        }
+
+        void destroy(VkDevice device)
+        {
+            vkDestroyDescriptorPool(device, imguiDescriptorPool, nullptr);
+            imguiDescriptorPool = VK_NULL_HANDLE;
+        }
+
+        ~ImguiHandler()
+        {
+            if (imguiDescriptorPool != VK_NULL_HANDLE)
+            {
+                throw std::runtime_error("Imgui Handler was not destroyed prior to going out of scope. Call ImguiHandler.destroy() to explicitly destroy the handler");
+            }
+        }
+
+    private:
+        void initDescriptorPool(VkDevice device)
+        {
+            VkDescriptorPoolSize poolSizes[] =
+			{
+				{ VK_DESCRIPTOR_TYPE_SAMPLER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1000 },
+				{ VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC, 1000 },
+				{ VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000 },
+				{ VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000 }
+			};
+
+            VkDescriptorPoolCreateInfo poolInfo{};
+            poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+            poolInfo.flags = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
+            poolInfo.maxSets = 0;
+            for (VkDescriptorPoolSize& poolSize : poolSizes)
+            {
+                poolInfo.maxSets += poolSize.descriptorCount;
+            }
+            
+            poolInfo.poolSizeCount = static_cast<uint32_t>(IM_ARRAYSIZE(poolSizes));
+            poolInfo.pPoolSizes = poolSizes;
+            if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &imguiDescriptorPool) != VK_SUCCESS)
+            {
+                throw std::runtime_error("failed to create IMGUI descriptor pool");
+            }
+        }
+
+        void createImguiRenderPass(VkDevice device, VkFormat swapChainImageFormat) 
+        {
+			VkAttachmentDescription colorAttachment{};
+			colorAttachment.format = swapChainImageFormat;
+			colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+			colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_LOAD;
+			colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+			colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+			colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+			colorAttachment.initialLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+			colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+			VkAttachmentReference colorAttachmentRef{};
+			colorAttachmentRef.attachment = 0;
+			colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+			VkSubpassDescription subpass{};
+			subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+			subpass.colorAttachmentCount = 1;
+			subpass.pColorAttachments = &colorAttachmentRef;
+
+			VkSubpassDependency dependency{};
+			dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
+			dependency.dstSubpass = 0;
+			dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+			dependency.srcAccessMask = 0;
+			dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+
+			VkRenderPassCreateInfo renderPassInfo{};
+			renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
+			renderPassInfo.attachmentCount = 1;
+			renderPassInfo.pAttachments = &colorAttachment;
+			renderPassInfo.subpassCount = 1;
+			renderPassInfo.pSubpasses = &subpass;
+			renderPassInfo.dependencyCount = 1;
+			renderPassInfo.pDependencies = &dependency;
+
+			auto res = vkCreateRenderPass(device, &renderPassInfo, nullptr, &imguiRenderPass);
+            IMGUI_ERROR_HANDLER(res);
+		}
+
+        void createImguiFramebuffers(VkDevice device, std::vector<VkImageView>& swapChainImageViews, VkExtent2D swapChainExtent) 
+        {
+			imguiFramebuffers.resize(swapChainImageViews.size());
+			for (size_t i = 0; i < swapChainImageViews.size(); i++) 
+            {
+				VkImageView attachments[] = { swapChainImageViews[i] };
+				VkFramebufferCreateInfo framebufferInfo{};
+				framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
+				framebufferInfo.renderPass = imguiRenderPass;
+				framebufferInfo.attachmentCount = 1;
+				framebufferInfo.pAttachments = attachments;
+				framebufferInfo.width = swapChainExtent.width;
+				framebufferInfo.height = swapChainExtent.height;
+				framebufferInfo.layers = 1;
+
+                auto res = vkCreateFramebuffer(device, &framebufferInfo, nullptr, &imguiFramebuffers[i]);
+                IMGUI_ERROR_HANDLER(res);
+			}
+		}
+
+        static void IMGUI_ERROR_HANDLER(VkResult err)
+        {
+            if (err != VK_SUCCESS)
+            {
+                throw std::runtime_error("IMGUI vulkan error, enum code: " + std::to_string((int)err));
+            }
+        }
+
+    } imguiHandler;
+
     
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback
     (
@@ -367,7 +542,8 @@ private:
     const uint32_t WIDTH = 800;
     const uint32_t HEIGHT = 600;
 
-    const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
+    const uint32_t MAX_FRAMES_IN_FLIGHT = 1;
+    const float MOVEMENT_SENS = 0.003f;
 
     uint32_t currentFrame = 0;
 
@@ -398,14 +574,15 @@ private:
     std::vector<VkSemaphore> imageAvailableSemaphores;
 	std::vector<VkSemaphore> renderFinishedSemaphores;
 	std::vector<VkFence> inFlightFences;
-	std::vector<VkFence> imagesInFlight;
+    std::vector<VkFence> imagesInFlight;
 
 
     bool framebufferResized = false;
 
     
     UniformData uniformData;
-    ManagedBuffer ubo;
+    
+    std::vector<ManagedBuffer> uniformBuffersRT;
 
     const float FOV = 60.0f;
     Camera camera;
@@ -414,7 +591,8 @@ private:
     double lastMouseY = 0.0;
     bool firstMouse = true;
 
-    std::vector<StorageImage> storageImages;
+    StorageImage outputImage;
+    StorageImage accumulationImage;
 
     VmaAllocator vmaAllocator = VK_NULL_HANDLE;
     
@@ -528,15 +706,17 @@ private:
 
     void updateDescriptorSetsRT();
 
+    void updateDescriptorSetRT(uint32_t index);
+
     void createRayTracingPipeline();
 
-    void createUniformBuffer();
+    void createUniformBuffers();
 
     void createSyncObjects();
 
     void createSphereBuffer();
 
-    void recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t imageIndex);
+    void recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame);
 
     void updateUniformBuffersRT();
 
@@ -561,12 +741,15 @@ private:
 		createStorageImages();
 		createCamera();
 		createSphereBuffer();
-		createUniformBuffer();
+		createUniformBuffers();
 		createBLAS();
 		createTLAS();
 		createRayTracingPipeline();
 		createShaderBindingTables();
 		createDescriptorSetsRT();        
+
+        auto queueFamilyIndicies = findQueueFamilies(physicalDevice);
+        imguiHandler.initImgui(window, instance, physicalDevice, device, queueFamilyIndicies.graphicsFamily.value(), graphicsQueue, static_cast<uint32_t>(swapChainImages.size()));
     }
 
     void recreateSwapChain();
@@ -590,7 +773,6 @@ private:
     void cleanup();
 
     void cleanupSwapChain();
-   
 
     void cleanupRayTracing();
 

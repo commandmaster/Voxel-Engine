@@ -89,20 +89,20 @@ PFN_vkCmdTraceRaysKHR VoxelEngine::vkCmdTraceRaysKHR = nullptr;
 
 void VoxelEngine::mouseCallback(GLFWwindow* window, double xpos, double ypos)
 {
-	VoxelEngine* app = static_cast<VoxelEngine*>(glfwGetWindowUserPointer(window));
+    VoxelEngine* app = static_cast<VoxelEngine*>(glfwGetWindowUserPointer(window));
     
     if (app->firstMouse) {
         app->lastMouseX = xpos;
         app->lastMouseY = ypos;
         app->firstMouse = false;
     }
-
+    
     float xoffset = xpos - app->lastMouseX;
     float yoffset = app->lastMouseY - ypos; 
     app->lastMouseX = xpos;
     app->lastMouseY = ypos;
-
-    app->camera.rotate(xoffset, yoffset);
+    
+    app->camera.rotate(xoffset, -yoffset);
 }
 
 void VoxelEngine::initWindow()
@@ -789,16 +789,17 @@ uint64_t VoxelEngine::getBufferDeviceAddress(VkBuffer buffer)
 
 void VoxelEngine::createStorageImages()
 {
-    storageImages.resize(MAX_FRAMES_IN_FLIGHT);
-    for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) {
-        storageImages[i].destroy();
+		outputImage.destroy();
+		accumulationImage.destroy();
+
         VkExtent3D extent;
         extent.depth = 1;
         extent.width = swapChainExtent.width;
         extent.height = swapChainExtent.height;
-        storageImages[i].create(vmaAllocator, device, extent, 
-            VK_FORMAT_B8G8R8A8_UNORM, 
-            VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+
+		
+        accumulationImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+		outputImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
 
         // Transition layout from UNDEFINED to GENERAL
         VkCommandBuffer cmd = createCommandBuffer(device, commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
@@ -809,8 +810,8 @@ void VoxelEngine::createStorageImages()
         barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-        barrier.image = storageImages[i].image;
-        barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+		barrier.image = accumulationImage.image;
+		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.levelCount = 1;
         barrier.subresourceRange.baseArrayLayer = 0;
@@ -818,18 +819,29 @@ void VoxelEngine::createStorageImages()
         barrier.srcAccessMask = 0;
         barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT | VK_ACCESS_SHADER_WRITE_BIT;
 
-        vkCmdPipelineBarrier(
-            cmd,
-            VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-            VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
-            0,
-            0, nullptr,
-            0, nullptr,
-            1, &barrier
-        );
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
+
+
+		barrier.image = outputImage.image;
+		vkCmdPipelineBarrier(
+			cmd,
+			VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+			VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+			0,
+			0, nullptr,
+			0, nullptr,
+			1, &barrier
+		);
 
         flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
-    }
 }
 
 void VoxelEngine::createBLAS()
@@ -874,7 +886,7 @@ void VoxelEngine::createBLAS()
     VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
     accelerationStructureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
     accelerationStructureGeometry.geometryType = VK_GEOMETRY_TYPE_AABBS_KHR;
-    accelerationStructureGeometry.flags = VK_GEOMETRY_OPAQUE_BIT_KHR;
+    accelerationStructureGeometry.flags = 0;
     
     accelerationStructureGeometry.geometry.aabbs.sType = 
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_AABBS_DATA_KHR;
@@ -981,8 +993,8 @@ void VoxelEngine::createTLAS()
     instance.instanceCustomIndex = 0;
     instance.mask = 0xFF;
     instance.instanceShaderBindingTableRecordOffset = 0;
-    instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-    instance.accelerationStructureReference = bottomLevelAccelerationStructure.deviceAddress;
+	instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR | VK_GEOMETRY_INSTANCE_FORCE_OPAQUE_BIT_KHR;
+	instance.accelerationStructureReference = bottomLevelAccelerationStructure.deviceAddress;
 
     // Create instance buffer
     ManagedBuffer instancesBuffer;
@@ -1090,181 +1102,215 @@ void VoxelEngine::deleteAS(AccelerationStructure& accelerationStructure)
     accelerationStructure.buffer.destroy(vmaAllocator);
 }
 
-void VoxelEngine::createShaderBindingTables() 
+void VoxelEngine::createShaderBindingTables()
 {
     const uint32_t handleSize = rtProperties.shaderGroupHandleSize;
-    const uint32_t handleSizeAligned = alignedSize(handleSize, rtProperties.shaderGroupBaseAlignment);
+    const uint32_t handleSizeAligned = alignedSize(rtProperties.shaderGroupHandleSize, 
+                                             rtProperties.shaderGroupBaseAlignment);
     const uint32_t groupCount = static_cast<uint32_t>(shaderGroups.size());
     
-    // Create SBT buffers with size = handleSizeAligned (aligned to GPU requirements)
+    // Create a single SBT buffer for simplicity
+    VkDeviceSize sbtSize = groupCount * handleSizeAligned;
+    
     raygenShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
-        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | 
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         ManagedBuffer::BufferType::DeviceLocal);
+        
     missShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
-        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | 
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         ManagedBuffer::BufferType::DeviceLocal);
+        
     closestHitShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
-        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | VK_BUFFER_USAGE_TRANSFER_DST_BIT,
+        VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | 
+        VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         ManagedBuffer::BufferType::DeviceLocal);
 
-    // Staging buffer must hold all groups with aligned entries
-    const VkDeviceSize stagingSize = groupCount * handleSizeAligned;
+    // Get shader handles
+    std::vector<uint8_t> shaderHandleStorage(groupCount * handleSize);
+    vkGetRayTracingShaderGroupHandlesKHR(
+        device, rtPipeline, 0, groupCount, groupCount * handleSize, shaderHandleStorage.data()
+    );
+    
+    // Staging buffer
     ManagedBuffer stagingBuffer;
-    stagingBuffer.create(vmaAllocator, device, stagingSize,
+    stagingBuffer.create(vmaAllocator, device, sbtSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         ManagedBuffer::BufferType::HostVisible);
-
-    // Get shader handles into staging buffer (aligned)
-    std::vector<uint8_t> shaderHandleStorage(stagingSize);
-    vkGetRayTracingShaderGroupHandlesKHR(
-        device, rtPipeline, 0, groupCount, stagingSize, shaderHandleStorage.data()
-    );
-    stagingBuffer.updateData(vmaAllocator, shaderHandleStorage.data(), stagingSize);
-
-    // Copy aligned chunks from staging to each SBT buffer (dstOffset = 0)
-    VkCommandBuffer cmd = createCommandBuffer(device, commandPool, 
-        VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+    
+    // Copy shader handles to staging buffer with proper alignment
+    uint8_t* data = nullptr;
+    vmaMapMemory(vmaAllocator, stagingBuffer.allocation, (void**)&data);
+    
+    // Copy each shader group handle
+    for (uint32_t i = 0; i < groupCount; i++) {
+        memcpy(data + i * handleSizeAligned, shaderHandleStorage.data() + i * handleSize, handleSize);
+    }
+    
+    vmaUnmapMemory(vmaAllocator, stagingBuffer.allocation);
+    
+    // Copy from staging to device-local SBT buffers
+    VkCommandBuffer cmd = createCommandBuffer(device, commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
     
     VkBufferCopy copyRegion{};
     copyRegion.size = handleSizeAligned;
-
+    
     // Raygen (group 0)
-    copyRegion.srcOffset = 0 * handleSizeAligned;
+    copyRegion.srcOffset = 0;
     vkCmdCopyBuffer(cmd, stagingBuffer.handle, raygenShaderBindingTable.handle, 1, &copyRegion);
-
+    
     // Miss (group 1)
-    copyRegion.srcOffset = 1 * handleSizeAligned;
+    copyRegion.srcOffset = handleSizeAligned;
     vkCmdCopyBuffer(cmd, stagingBuffer.handle, missShaderBindingTable.handle, 1, &copyRegion);
-
+    
     // Hit (group 2)
     copyRegion.srcOffset = 2 * handleSizeAligned;
     vkCmdCopyBuffer(cmd, stagingBuffer.handle, closestHitShaderBindingTable.handle, 1, &copyRegion);
-
+    
     flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
     stagingBuffer.destroy(vmaAllocator);
+    
+    // Store device addresses
+    raygenShaderBindingTable.deviceAddress = getBufferDeviceAddress(raygenShaderBindingTable.handle);
+    missShaderBindingTable.deviceAddress = getBufferDeviceAddress(missShaderBindingTable.handle);
+    closestHitShaderBindingTable.deviceAddress = getBufferDeviceAddress(closestHitShaderBindingTable.handle);
 }
 
-void VoxelEngine::createDescriptorSetsRT()
-{
-	std::array<VkDescriptorPoolSize, 4> poolSizes = {
-		{
-			{VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR, MAX_FRAMES_IN_FLIGHT},
-			{VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, MAX_FRAMES_IN_FLIGHT},
-			{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, MAX_FRAMES_IN_FLIGHT},
-			{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, MAX_FRAMES_IN_FLIGHT}
-		}
-	};
 
-	VkDescriptorPoolCreateInfo poolInfo = {
-        .sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .maxSets = MAX_FRAMES_IN_FLIGHT,
-        .poolSizeCount = static_cast<uint32_t>(poolSizes.size()), // Use correct count
-        .pPoolSizes = poolSizes.data() // Use fixed array
-    };
+void VoxelEngine::createDescriptorSetsRT() {
+    // Create a descriptor pool with enough resources for MAX_FRAMES_IN_FLIGHT
+    std::array<VkDescriptorPoolSize, 4> poolSizes{};
+    poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    poolSizes[0].descriptorCount = MAX_FRAMES_IN_FLIGHT;
+    poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    poolSizes[1].descriptorCount = MAX_FRAMES_IN_FLIGHT * 2; // For output and accumulation images
+    poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    poolSizes[2].descriptorCount = MAX_FRAMES_IN_FLIGHT;
+    poolSizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    poolSizes[3].descriptorCount = MAX_FRAMES_IN_FLIGHT;
 
-	if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS)
+    VkDescriptorPoolCreateInfo poolInfo{};
+    poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+    poolInfo.pPoolSizes = poolSizes.data();
+    poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT; // Allocate one set per frame
+
+    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) {
+        throw std::runtime_error("failed to create descriptor pool!");
+    }
+
+    // Allocate descriptor sets for each frame
+    descriptorSetsRT.resize(MAX_FRAMES_IN_FLIGHT);
+    
+    std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayoutRT);
+    
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool;
+    allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
+    allocInfo.pSetLayouts = layouts.data();
+
+    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()) != VK_SUCCESS) {
+        throw std::runtime_error("failed to allocate descriptor sets!");
+    }
+
+    // Now update all descriptor sets
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
 	{
-		throw std::runtime_error("could not create descriptor pool");
-	}
-
-	std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, descriptorSetLayoutRT);
-	VkDescriptorSetAllocateInfo allocInfo = {
-		.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-		.descriptorPool = descriptorPool,
-		.descriptorSetCount = MAX_FRAMES_IN_FLIGHT,
-		.pSetLayouts = layouts.data()
-	};
-
-	descriptorSetsRT.resize(MAX_FRAMES_IN_FLIGHT);
-	if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()) != VK_SUCCESS)
-	{
-		throw std::runtime_error("could not allocate descriptor set");
-	}
-
-	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
-	{
-		std::array<VkWriteDescriptorSet, 4> descriptorWrites = {};
-
-		// Acceleration structure (Binding 0)
-		VkWriteDescriptorSetAccelerationStructureKHR asInfo = {
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR,
-			.accelerationStructureCount = 1,
-			.pAccelerationStructures = &topLevelAccelerationStructure.handle  
-		};
-
-		descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[0].dstSet = descriptorSetsRT[i];
-		descriptorWrites[0].dstBinding = 0;
-		descriptorWrites[0].descriptorCount = 1;
-		descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
-		descriptorWrites[0].pNext = &asInfo;
-
-		// Storage image (Binding 1)
-		VkDescriptorImageInfo imageInfo = {
-			.imageView = storageImages[i].view,
-			.imageLayout = VK_IMAGE_LAYOUT_GENERAL  
-		};
-
-		descriptorWrites[1].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[1].dstSet = descriptorSetsRT[i];
-		descriptorWrites[1].dstBinding = 1;
-		descriptorWrites[1].descriptorCount = 1;
-		descriptorWrites[1].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-		descriptorWrites[1].pImageInfo = &imageInfo;
-
-		// Storage buffer (Binding 2)
-		VkDescriptorBufferInfo bufferInfo = {
-			.buffer = ubo.handle,
-			.offset = 0,
-			.range = VK_WHOLE_SIZE
-		};
-
-		descriptorWrites[2].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[2].dstSet = descriptorSetsRT[i];
-		descriptorWrites[2].dstBinding = 2;
-		descriptorWrites[2].descriptorCount = 1;
-		descriptorWrites[2].descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrites[2].pBufferInfo = &bufferInfo;
-
-		VkDescriptorBufferInfo sphereBufferInfo{
-			.buffer = sphereBuffer.handle,
-			.offset = 0,
-			.range = VK_WHOLE_SIZE
-		};
-
-		descriptorWrites[3].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrites[3].dstSet = descriptorSetsRT[i];
-		descriptorWrites[3].dstBinding = 3;
-		descriptorWrites[3].descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-		descriptorWrites[3].descriptorCount = 1;
-		descriptorWrites[3].pBufferInfo = &sphereBufferInfo;
-
-		vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
-	}
-
+        updateDescriptorSetRT(i);
+    }
 }
 
-void VoxelEngine::updateDescriptorSetsRT()
+void VoxelEngine::updateDescriptorSetRT(uint32_t index) 
 {
-	for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i) 
-	{
-		VkDescriptorImageInfo imageInfo{
-			.imageView = storageImages[i].view,
-			.imageLayout = VK_IMAGE_LAYOUT_GENERAL
-		};
+    std::vector<VkWriteDescriptorSet> descriptorWrites;
 
-		VkWriteDescriptorSet write{
-			.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-			.dstSet = descriptorSetsRT[i],
-			.dstBinding = 1, 
-			.descriptorCount = 1,
-			.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
-			.pImageInfo = &imageInfo
-		};
+    // Binding 0: Top-level acceleration structure
+    VkWriteDescriptorSetAccelerationStructureKHR accelWriteInfo{};
+    accelWriteInfo.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR;
+    accelWriteInfo.accelerationStructureCount = 1;
+    accelWriteInfo.pAccelerationStructures = &topLevelAccelerationStructure.handle;
 
-		vkUpdateDescriptorSets(device, 1, &write, 0, nullptr);
+    VkWriteDescriptorSet accelWrite{};
+    accelWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    accelWrite.pNext = &accelWriteInfo;
+    accelWrite.dstSet = descriptorSetsRT[index];
+    accelWrite.dstBinding = 0;
+    accelWrite.descriptorType = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
+    accelWrite.descriptorCount = 1;
+    descriptorWrites.push_back(accelWrite);
 
-	}
+    // Binding 1: Output storage image
+    VkDescriptorImageInfo outputImageInfo{};
+    outputImageInfo.imageView = outputImage.view;
+    outputImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkWriteDescriptorSet outputImageWrite{};
+    outputImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    outputImageWrite.dstSet = descriptorSetsRT[index];
+    outputImageWrite.dstBinding = 1;
+    outputImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    outputImageWrite.descriptorCount = 1;
+    outputImageWrite.pImageInfo = &outputImageInfo;
+    descriptorWrites.push_back(outputImageWrite);
+
+    // Binding 2: Uniform buffer
+    VkDescriptorBufferInfo uniformBufferInfo{};
+    uniformBufferInfo.buffer = uniformBuffersRT[index].handle;
+    uniformBufferInfo.offset = 0;
+    uniformBufferInfo.range = sizeof(UniformData);
+
+    VkWriteDescriptorSet uniformWrite{};
+    uniformWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    uniformWrite.dstSet = descriptorSetsRT[index];
+    uniformWrite.dstBinding = 2;
+    uniformWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+    uniformWrite.descriptorCount = 1;
+    uniformWrite.pBufferInfo = &uniformBufferInfo;
+    descriptorWrites.push_back(uniformWrite);
+
+    // Binding 3: Sphere storage buffer
+    VkDescriptorBufferInfo sphereBufferInfo{};
+    sphereBufferInfo.buffer = sphereBuffer.handle;
+    sphereBufferInfo.offset = 0;
+    sphereBufferInfo.range = VK_WHOLE_SIZE;
+
+    VkWriteDescriptorSet sphereWrite{};
+    sphereWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    sphereWrite.dstSet = descriptorSetsRT[index];
+    sphereWrite.dstBinding = 3;
+    sphereWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    sphereWrite.descriptorCount = 1;
+    sphereWrite.pBufferInfo = &sphereBufferInfo;
+    descriptorWrites.push_back(sphereWrite);
+
+    // Binding 4: Accumulation storage image
+    VkDescriptorImageInfo accumulationImageInfo{};
+	accumulationImageInfo.imageView = accumulationImage.view;
+	accumulationImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+
+    VkWriteDescriptorSet accumulationImageWrite{};
+    accumulationImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    accumulationImageWrite.dstSet = descriptorSetsRT[index];
+    accumulationImageWrite.dstBinding = 4;
+    accumulationImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    accumulationImageWrite.descriptorCount = 1;
+    accumulationImageWrite.pImageInfo = &accumulationImageInfo;
+    descriptorWrites.push_back(accumulationImageWrite);
+
+    // Update the descriptor set
+    vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+}
+
+void VoxelEngine::updateDescriptorSetsRT() 
+{
+    for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		updateDescriptorSetRT(i);
+    }
 }
 
 void VoxelEngine::createRayTracingPipeline()
@@ -1292,13 +1338,20 @@ void VoxelEngine::createRayTracingPipeline()
 	sphereBufferBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
 	sphereBufferBinding.descriptorCount = 1;
 	sphereBufferBinding.stageFlags = VK_SHADER_STAGE_INTERSECTION_BIT_KHR | VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+
+	VkDescriptorSetLayoutBinding accumulationImageLayoutBinding{};
+    accumulationImageLayoutBinding.binding = 4; 
+    accumulationImageLayoutBinding.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    accumulationImageLayoutBinding.descriptorCount = 1;
+    accumulationImageLayoutBinding.stageFlags = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
 	
 
 	std::vector<VkDescriptorSetLayoutBinding> bindings = {
 	    accelerationStructureLayoutBinding,
 	    resultImageLayoutBinding,
 		uniformBufferBinding,
-		sphereBufferBinding
+		sphereBufferBinding,
+		accumulationImageLayoutBinding
 	};
 
 
@@ -1312,10 +1365,17 @@ void VoxelEngine::createRayTracingPipeline()
 		throw std::runtime_error("failed to create descriptor set layout");
 	}
 
+	VkPushConstantRange pushConstantRange = {};
+	pushConstantRange.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR; // Include closest hit stage
+	pushConstantRange.offset = 0;
+	pushConstantRange.size = sizeof(Constants);
+
 	VkPipelineLayoutCreateInfo pipelineLayoutCreateInfo{};
 	pipelineLayoutCreateInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutCreateInfo.setLayoutCount = 1;
 	pipelineLayoutCreateInfo.pSetLayouts = &descriptorSetLayoutRT;
+	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
+	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
 	if (vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &rtPipelineLayout) != VK_SUCCESS)
 	{
@@ -1429,23 +1489,20 @@ void VoxelEngine::createRayTracingPipeline()
 	vkDestroyShaderModule(device, intersectionShaderModule, nullptr);
 }
 
-void VoxelEngine::createUniformBuffer()
+void VoxelEngine::createUniformBuffers()
 {
     const VkDeviceSize bufferSize = sizeof(UniformData);
-    
-    ubo.create(
-        vmaAllocator,
-        device,
-        bufferSize,
-        VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | 
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        ManagedBuffer::BufferType::HostVisible
-    );
 
-    uniformData.view_inverse = glm::mat4(1.0f);
+	uniformBuffersRT.resize(MAX_FRAMES_IN_FLIGHT);
+	uniformData.view_inverse = glm::mat4(1.0f);
     uniformData.proj_inverse = glm::mat4(1.0f);
-    
-    ubo.updateData(vmaAllocator, &uniformData, sizeof(UniformData));
+
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
+	{
+		uniformBuffersRT[i].create(vmaAllocator, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, ManagedBuffer::BufferType::HostVisible);
+		uniformBuffersRT[i].updateData(vmaAllocator, &uniformData, bufferSize);
+	}
 }
 
 void VoxelEngine::createSyncObjects() 
@@ -1453,7 +1510,7 @@ void VoxelEngine::createSyncObjects()
     imageAvailableSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     renderFinishedSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
     inFlightFences.resize(MAX_FRAMES_IN_FLIGHT);
-    imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE); 
+	imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
 
     VkSemaphoreCreateInfo semaphoreInfo{};
     semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
@@ -1485,99 +1542,59 @@ void VoxelEngine::createSphereBuffer()
     sphereBuffer.updateData(vmaAllocator, spheres.data(), bufferSize);
 }
 
-void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t imageIndex)
-{
-	VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
-    }
+void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)
+{	
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipeline);
+    
+    // Bind descriptor sets
+    vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipelineLayout, 
+                           0, 1, &descriptorSetsRT[currentFrame], 0, nullptr);
 
-    // Transition swapchain image from undefined layout to TRANSFER_DST_OPTIMAL
-    VkImageMemoryBarrier swapchainBarrierBefore{};
-    swapchainBarrierBefore.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    swapchainBarrierBefore.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    swapchainBarrierBefore.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    swapchainBarrierBefore.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    swapchainBarrierBefore.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    swapchainBarrierBefore.image = swapChainImages[imageIndex];
-    swapchainBarrierBefore.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    swapchainBarrierBefore.subresourceRange.baseMipLevel = 0;
-    swapchainBarrierBefore.subresourceRange.levelCount = 1;
-    swapchainBarrierBefore.subresourceRange.baseArrayLayer = 0;
-    swapchainBarrierBefore.subresourceRange.layerCount = 1;
-    swapchainBarrierBefore.srcAccessMask = 0;
-    swapchainBarrierBefore.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
 
-    vkCmdPipelineBarrier(
-        commandBuffer,
-        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-        VK_PIPELINE_STAGE_TRANSFER_BIT,
-        0,
-        0, nullptr,
-        0, nullptr,
-        1, &swapchainBarrierBefore
-    );
+	vkCmdPushConstants(commandBuffer, rtPipelineLayout, VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR,
+		0, sizeof(constants), &constants);
+    
+    // Set up shader binding tables
+    VkStridedDeviceAddressRegionKHR raygenRegion{};
+    raygenRegion.deviceAddress = raygenShaderBindingTable.deviceAddress;
+    raygenRegion.stride = rtProperties.shaderGroupHandleSize;
+    raygenRegion.size = rtProperties.shaderGroupHandleSize;
+    
+    VkStridedDeviceAddressRegionKHR missRegion{};
+    missRegion.deviceAddress = missShaderBindingTable.deviceAddress;
+    missRegion.stride = rtProperties.shaderGroupHandleSize;
+    missRegion.size = rtProperties.shaderGroupHandleSize;
+    
+    VkStridedDeviceAddressRegionKHR hitRegion{};
+    hitRegion.deviceAddress = closestHitShaderBindingTable.deviceAddress;
+    hitRegion.stride = rtProperties.shaderGroupHandleSize;
+    hitRegion.size = rtProperties.shaderGroupHandleSize;
+    
+    VkStridedDeviceAddressRegionKHR callableRegion{};
 
-    // Bind ray tracing pipeline and descriptor sets
-    vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipeline);
-    vkCmdBindDescriptorSets(
-        commandBuffer,
-        VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR,
-        rtPipelineLayout,
-        0,
-        1,
-        &descriptorSetsRT[currentFrame],
-        0,
-        nullptr
-    );
-
-	const uint32_t handleSize = rtProperties.shaderGroupHandleSize;
-    const uint32_t handleSizeAligned = alignedSize(handleSize, rtProperties.shaderGroupBaseAlignment);
-
-    // Trace rays
-	VkStridedDeviceAddressRegionKHR raygenSbtRegion{};
-    raygenSbtRegion.deviceAddress = raygenShaderBindingTable.deviceAddress;
-    raygenSbtRegion.stride = handleSizeAligned; // Correct stride
-    raygenSbtRegion.size = handleSizeAligned;   // Correct size
-
-    VkStridedDeviceAddressRegionKHR missSbtRegion{};
-    missSbtRegion.deviceAddress = missShaderBindingTable.deviceAddress;
-    missSbtRegion.stride = handleSizeAligned;
-    missSbtRegion.size = handleSizeAligned;
-
-    VkStridedDeviceAddressRegionKHR hitSbtRegion{};
-    hitSbtRegion.deviceAddress = closestHitShaderBindingTable.deviceAddress;
-    hitSbtRegion.stride = handleSizeAligned;
-    hitSbtRegion.size = handleSizeAligned;
-
-    VkStridedDeviceAddressRegionKHR callableSbtRegion{};
-
+    
+    // Trace rays - this is the actual ray tracing work
     vkCmdTraceRaysKHR(
         commandBuffer,
-        &raygenSbtRegion,
-        &missSbtRegion,
-        &hitSbtRegion,
-        &callableSbtRegion,
-        swapChainExtent.width,
-        swapChainExtent.height,
+        &raygenRegion, 
+        &missRegion, 
+        &hitRegion, 
+        &callableRegion,
+        swapChainExtent.width, 
+        swapChainExtent.height, 
         1
     );
+	
 
-    // Barrier to ensure ray tracing writes finish before copy
-    VkImageMemoryBarrier storageImageBarrier{};
-    storageImageBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    storageImageBarrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
-    storageImageBarrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
-    storageImageBarrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
-    storageImageBarrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-    storageImageBarrier.image = storageImages[currentFrame].image;
-    storageImageBarrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    storageImageBarrier.subresourceRange.baseMipLevel = 0;
-    storageImageBarrier.subresourceRange.levelCount = 1;
-    storageImageBarrier.subresourceRange.baseArrayLayer = 0;
-    storageImageBarrier.subresourceRange.layerCount = 1;
-
+	VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.image = outputImage.image;
+    barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    barrier.srcAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    
     vkCmdPipelineBarrier(
         commandBuffer,
         VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
@@ -1585,44 +1602,56 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
         0,
         0, nullptr,
         0, nullptr,
-        1, &storageImageBarrier
+        1, &barrier
     );
 
-    // Copy storage image to swapchain image
-    VkImageCopy copyRegion{};
-    copyRegion.srcSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    copyRegion.srcSubresource.mipLevel = 0;
-    copyRegion.srcSubresource.baseArrayLayer = 0;
-    copyRegion.srcSubresource.layerCount = 1;
-    copyRegion.dstSubresource = copyRegion.srcSubresource;
-    copyRegion.extent = { swapChainExtent.width, swapChainExtent.height, 1 };
-
-    vkCmdCopyImage(
+    // Transition swapchain image to TRANSFER_DST_OPTIMAL
+    VkImageMemoryBarrier swapchainBarrier{};
+    swapchainBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    swapchainBarrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    swapchainBarrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    swapchainBarrier.image = swapChainImages[imageIndex];
+    swapchainBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    swapchainBarrier.srcAccessMask = 0;
+    swapchainBarrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(
         commandBuffer,
-        storageImages[currentFrame].image,
-        VK_IMAGE_LAYOUT_GENERAL,
-        swapChainImages[imageIndex],
-        VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-        1,
-        &copyRegion
+        VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &swapchainBarrier
+    );
+	
+	
+    VkImageBlit blitRegion{};
+    blitRegion.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blitRegion.srcOffsets[0] = {0, 0, 0};
+    blitRegion.srcOffsets[1] = {(int)swapChainExtent.width, (int)swapChainExtent.height, 1};
+    blitRegion.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blitRegion.dstOffsets[0] = {0, 0, 0};
+    blitRegion.dstOffsets[1] = {(int)swapChainExtent.width, (int)swapChainExtent.height, 1};
+
+    vkCmdBlitImage(
+        commandBuffer,
+        outputImage.image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        swapChainImages[imageIndex], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+        1, &blitRegion,
+        VK_FILTER_LINEAR
     );
 
-    // Transition swapchain image to PRESENT_SRC layout
-    VkImageMemoryBarrier swapchainBarrierAfter{};
-    swapchainBarrierAfter.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-    swapchainBarrierAfter.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    swapchainBarrierAfter.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    swapchainBarrierAfter.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    swapchainBarrierAfter.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-    swapchainBarrierAfter.image = swapChainImages[imageIndex];
-    swapchainBarrierAfter.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
-    swapchainBarrierAfter.subresourceRange.baseMipLevel = 0;
-    swapchainBarrierAfter.subresourceRange.levelCount = 1;
-    swapchainBarrierAfter.subresourceRange.baseArrayLayer = 0;
-    swapchainBarrierAfter.subresourceRange.layerCount = 1;
-    swapchainBarrierAfter.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-    swapchainBarrierAfter.dstAccessMask = 0;
-
+    // Transition swapchain image to PRESENT_SRC_KHR
+    VkImageMemoryBarrier presentBarrier{};
+    presentBarrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    presentBarrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    presentBarrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    presentBarrier.image = swapChainImages[imageIndex];
+    presentBarrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    presentBarrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    presentBarrier.dstAccessMask = 0;
+    
     vkCmdPipelineBarrier(
         commandBuffer,
         VK_PIPELINE_STAGE_TRANSFER_BIT,
@@ -1630,13 +1659,24 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
         0,
         0, nullptr,
         0, nullptr,
-        1, &swapchainBarrierAfter
+        1, &presentBarrier
     );
 
-    if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
-    }	
-
+    // Transition outputImage back to GENERAL for next frame
+    barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
+    barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    barrier.dstAccessMask = VK_ACCESS_SHADER_WRITE_BIT;
+    
+    vkCmdPipelineBarrier(
+        commandBuffer,
+        VK_PIPELINE_STAGE_TRANSFER_BIT,
+        VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
 }
 
 void VoxelEngine::updateUniformBuffersRT()
@@ -1649,21 +1689,25 @@ void VoxelEngine::updateUniformBuffersRT()
 	uniformData.view_inverse = camera.getInvView();
 	uniformData.proj_inverse = camera.getInvProj();
 
-	if (ubo.type == ManagedBuffer::BufferType::HostVisible)
+	for (auto& ubo : uniformBuffersRT)
 	{
-        void* mapped;
-		vmaMapMemory(vmaAllocator, ubo.allocation, &mapped);
-		memcpy(mapped, &uniformData, sizeof(UniformData));
-		vmaUnmapMemory(vmaAllocator, ubo.allocation);
-    } 
-	else 
-	{
-        throw std::runtime_error("Trying to update non-host-visible uniform buffer");
-    }
+		if (ubo.type == ManagedBuffer::BufferType::HostVisible)
+		{
+			void* mapped;
+			vmaMapMemory(vmaAllocator, ubo.allocation, &mapped);
+			memcpy(mapped, &uniformData, sizeof(UniformData));
+			vmaUnmapMemory(vmaAllocator, ubo.allocation);
+		} 
+		else 
+		{
+			throw std::runtime_error("Trying to update non-host-visible uniform buffer");
+		}
+	}
 }
 
 void VoxelEngine::createCamera()
 {
+	camera.setMouseSensitivity(0.002f);
 	camera.setPerspective(FOV, static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
 	camera.setPosition({0.0f, 0.0f, 5.0f});
     camera.lookAt({0.0f, 0.0f, 0.0f});	
@@ -1671,27 +1715,43 @@ void VoxelEngine::createCamera()
 
 void VoxelEngine::handleInput(GLFWwindow* window)
 {
-	if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
-        camera.move(camera.getForward() * 0.1f);
+    // Movement speed with shift for fast movement
+    float moveSpeed = MOVEMENT_SENS;
+    if (glfwGetKey(window, GLFW_KEY_LEFT_SHIFT) == GLFW_PRESS)
+        moveSpeed *= 5.0f;  // Move faster when holding shift
+    
+    // Forward/backward along camera's forward vector
+    if (glfwGetKey(window, GLFW_KEY_W) == GLFW_PRESS)
+        camera.move(camera.getForward() * moveSpeed);
     if (glfwGetKey(window, GLFW_KEY_S) == GLFW_PRESS)
-        camera.move(-camera.getForward() * 0.1f);
+        camera.move(-camera.getForward() * moveSpeed);
+    
+    // Strafe left/right along camera's right vector
     if (glfwGetKey(window, GLFW_KEY_A) == GLFW_PRESS)
-        camera.move(-camera.getRight() * 0.1f);
+        camera.move(-camera.getRight() * moveSpeed);
     if (glfwGetKey(window, GLFW_KEY_D) == GLFW_PRESS)
-        camera.move(camera.getRight() * 0.1f);
-	if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) 
-	{
+        camera.move(camera.getRight() * moveSpeed);
+        
+    // Up/down movement along world up vector (typical in debug cameras)
+    if (glfwGetKey(window, GLFW_KEY_E) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_SPACE) == GLFW_PRESS)
+        camera.move(glm::vec3(0.0f, 1.0f, 0.0f) * moveSpeed);
+    if (glfwGetKey(window, GLFW_KEY_Q) == GLFW_PRESS || glfwGetKey(window, GLFW_KEY_LEFT_CONTROL) == GLFW_PRESS)
+        camera.move(glm::vec3(0.0f, -1.0f, 0.0f) * moveSpeed);
+        
+    // Toggle cursor lock
+    if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS) 
+    {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
         firstMouse = true;
     }
     if (glfwGetKey(window, GLFW_KEY_ENTER) == GLFW_PRESS) 
-	{
+    {
         glfwSetInputMode(window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
     }
 }
 
-
-void VoxelEngine::recreateSwapChain() {
+void VoxelEngine::recreateSwapChain() 
+{
     int width = 0, height = 0;
     glfwGetFramebufferSize(window, &width, &height);
     while (width == 0 || height == 0) {
@@ -1699,13 +1759,14 @@ void VoxelEngine::recreateSwapChain() {
         glfwWaitEvents();
     }
 
+    vkDeviceWaitIdle(device);  
+
 	if (!commandBuffers.empty()) 
 	{
         vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
     }
     createCommandBuffers();
 
-    vkDeviceWaitIdle(device);  // Ensure all operations complete
 
     cleanupSwapChain();
 	cleanupSyncObjects();
@@ -1717,22 +1778,25 @@ void VoxelEngine::recreateSwapChain() {
 	createSyncObjects();
     createCommandBuffers(); 
 
-	imagesInFlight.resize(swapChainImages.size(), VK_NULL_HANDLE);
-
-    // Reset frame index to prevent out-of-bounds access
-    currentFrame = 0;
-
     // Update camera and descriptors
     camera.setPerspective(FOV, 
         static_cast<float>(swapChainExtent.width) / 
         static_cast<float>(swapChainExtent.height));
     updateDescriptorSetsRT();
+
+	currentFrame = 0;
 }
 
 void VoxelEngine::drawFrameRT() 
 {
-	vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
-
+    // Wait for the previous frame to complete
+    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    
+	
+    // Update uniform buffers for the current frame BEFORE recording commands
+    updateUniformBuffersRT();
+    
+    // Acquire an image from the swap chain
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
         device, 
@@ -1742,7 +1806,8 @@ void VoxelEngine::drawFrameRT()
         VK_NULL_HANDLE, 
         &imageIndex
     );
-
+    
+    // Check if swap chain needs recreation
     if (result == VK_ERROR_OUT_OF_DATE_KHR || framebufferResized) {
         framebufferResized = false;
         recreateSwapChain();
@@ -1750,65 +1815,70 @@ void VoxelEngine::drawFrameRT()
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
         throw std::runtime_error("failed to acquire swap chain image!");
     }
-
-    // Check if previous frame using this image is complete
+    
+    // Check if a previous frame is using this image (i.e., there is its fence to wait on)
     if (imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
         vkWaitForFences(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
     }
+    // Mark the image as now being in use by this frame
     imagesInFlight[imageIndex] = inFlightFences[currentFrame];
-
-    updateUniformBuffersRT();
-
-    // Use command buffer specific to this swapchain image
-    VkCommandBuffer commandBuffer = commandBuffers[currentFrame];
     
-    recordCommandBufferRT(commandBuffer, imageIndex);
-
-    VkSemaphoreSubmitInfoKHR waitSemaphoreSubmitInfo{};
-	waitSemaphoreSubmitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO_KHR;
-	waitSemaphoreSubmitInfo.semaphore = imageAvailableSemaphores[currentFrame];
-	// Correct the wait stage to COLOR_ATTACHMENT_OUTPUT
-	waitSemaphoreSubmitInfo.stageMask = VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-	waitSemaphoreSubmitInfo.deviceIndex = 0;
-
-    VkSemaphoreSubmitInfoKHR signalSemaphoreSubmitInfo{};
-    signalSemaphoreSubmitInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO_KHR;
-    signalSemaphoreSubmitInfo.semaphore = renderFinishedSemaphores[currentFrame];
-    signalSemaphoreSubmitInfo.stageMask = VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-    signalSemaphoreSubmitInfo.deviceIndex = 0;
-
-    VkCommandBufferSubmitInfoKHR commandBufferSubmitInfo{};
-    commandBufferSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO_KHR;
-    commandBufferSubmitInfo.commandBuffer = commandBuffer;
-    commandBufferSubmitInfo.deviceMask = 0;
-
-    VkSubmitInfo2KHR submitInfo2{};
-    submitInfo2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2_KHR;
-    submitInfo2.waitSemaphoreInfoCount = 1;
-    submitInfo2.pWaitSemaphoreInfos = &waitSemaphoreSubmitInfo;
-    submitInfo2.commandBufferInfoCount = 1;
-    submitInfo2.pCommandBufferInfos = &commandBufferSubmitInfo;
-    submitInfo2.signalSemaphoreInfoCount = 1;
-    submitInfo2.pSignalSemaphoreInfos = &signalSemaphoreSubmitInfo;
-
+    // Reset the fence for this frame
     vkResetFences(device, 1, &inFlightFences[currentFrame]);
-    if (VoxelEngine::vkQueueSubmit2KHR(graphicsQueue, 1, &submitInfo2, inFlightFences[currentFrame]) != VK_SUCCESS)
-	{
-        throw std::runtime_error("failed to submit command buffer!");
+    
+    // Reset and begin recording the command buffer
+    vkResetCommandBuffer(commandBuffers[currentFrame], 0);
+    
+    VkCommandBufferBeginInfo beginInfo{};
+    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    
+    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
+        throw std::runtime_error("failed to begin recording command buffer!");
+    }
+    
+
+    recordCommandBufferRT(commandBuffers[currentFrame], imageIndex, currentFrame);
+
+    if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to record command buffer!");
+    }
+    
+    VkSubmitInfo submitInfo{};
+    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    
+    VkSemaphore waitSemaphores[] = {imageAvailableSemaphores[currentFrame]};
+    VkPipelineStageFlags waitStages[] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+    submitInfo.waitSemaphoreCount = 1;
+    submitInfo.pWaitSemaphores = waitSemaphores;
+    submitInfo.pWaitDstStageMask = waitStages;
+    
+    submitInfo.commandBufferCount = 1;
+    submitInfo.pCommandBuffers = &commandBuffers[currentFrame];
+    
+    VkSemaphore signalSemaphores[] = {renderFinishedSemaphores[currentFrame]};
+    submitInfo.signalSemaphoreCount = 1;
+    submitInfo.pSignalSemaphores = signalSemaphores;
+
+    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
+        throw std::runtime_error("failed to submit draw command buffer!");
     }
 
-
+    
+    // Present the image
     VkPresentInfoKHR presentInfo{};
     presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores = &renderFinishedSemaphores[currentFrame];
+    presentInfo.pWaitSemaphores = signalSemaphores;
 
+    
     VkSwapchainKHR swapChains[] = {swapChain};
     presentInfo.swapchainCount = 1;
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
-
+    
     result = vkQueuePresentKHR(presentQueue, &presentInfo);
+
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
         framebufferResized = false;
@@ -1816,8 +1886,9 @@ void VoxelEngine::drawFrameRT()
     } else if (result != VK_SUCCESS) {
         throw std::runtime_error("failed to present swap chain image!");
     }
-
-    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+    
+    // Advance to the next frame
+    currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;    
 }
 
 void VoxelEngine::cleanupSyncObjects() 
@@ -1827,17 +1898,23 @@ void VoxelEngine::cleanupSyncObjects()
         vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
         vkDestroyFence(device, inFlightFences[i], nullptr);
     }
-    imageAvailableSemaphores.clear();
+	
+	imageAvailableSemaphores.clear();
     renderFinishedSemaphores.clear();
     inFlightFences.clear();
+	imagesInFlight.clear();
 }
 
 
 void VoxelEngine::cleanup()
 {
+	imguiHandler.destroy(device);
+
 	cleanupRayTracing();
 
 	cleanupSwapChain();
+	cleanupSyncObjects();
+
 	vkDestroyCommandPool(device, commandPool, nullptr);
 
 	if (descriptorPool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device, descriptorPool, nullptr);
@@ -1905,13 +1982,14 @@ void VoxelEngine::cleanupRayTracing()
 	missShaderBindingTable.destroy(vmaAllocator);
 	closestHitShaderBindingTable.destroy(vmaAllocator);
 
-	for (auto& storageImage : storageImages)
-	{
-		storageImage.destroy();
-	}
-	storageImages.clear();
+	outputImage.destroy();
+	accumulationImage.destroy();
 
-	ubo.destroy(vmaAllocator);
+	for (auto& ubo : uniformBuffersRT)
+	{
+		ubo.destroy(vmaAllocator);
+	}
+	
 	sphereBuffer.destroy(vmaAllocator);
 }
 

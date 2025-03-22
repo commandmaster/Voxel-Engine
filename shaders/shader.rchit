@@ -1,16 +1,29 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
 
-hitAttributeEXT vec3 hitNormal;
+layout(location = 0) rayPayloadInEXT vec3 payload;
+hitAttributeEXT vec3 attribs;
 
-layout(location = 0) rayPayloadEXT vec3 hitValue;
+layout(push_constant) uniform Constants {
+    vec3 lightDir; // Direction to the light source (should be normalized)
+    vec3 lightColor; // Color of the light
+    vec3 ambientColor; // Ambient light color
+} constants;
 
 void main() {
-    vec3 lightDir = normalize(vec3(1,1,1));
-    float diff = max(dot(hitNormal, lightDir), 0.0);
-    vec3 color = vec3(1,0,0) * (diff + 0.1);
-	// hitValue = color;
-
-    hitValue = vec3(1,0,0);
+    // Surface normal comes from the hit attributes
+    vec3 normal = attribs;
     
+    // Calculate diffuse lighting - dot product of normal and light direction
+    float diffuse = max(dot(normal, normalize(constants.lightDir)), 0.0);
+    
+    // Base material color (could be added as a parameter per sphere)
+    vec3 materialColor = vec3(0.8, 0.2, 0.2); // Red material
+    
+    // Combine ambient and diffuse components
+    vec3 ambient = constants.ambientColor * materialColor;
+    vec3 diffuseColor = constants.lightColor * materialColor * diffuse;
+    
+    // Final color is the sum of ambient and diffuse
+    payload = ambient + diffuseColor;
 }

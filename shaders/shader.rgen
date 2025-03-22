@@ -1,44 +1,47 @@
 #version 460
 #extension GL_EXT_ray_tracing : require
-#extension GL_EXT_nonuniform_qualifier : enable
 
-layout(binding = 1, rgba8) uniform image2D storageImage;
+layout(binding = 1, rgba32f) uniform image2D storageImage;
+layout(binding = 0) uniform accelerationStructureEXT topLevelAS;
 layout(binding = 2) uniform Uniforms {
     mat4 viewInverse;
     mat4 projInverse;
 } uniforms;
 
-layout(binding = 0) uniform accelerationStructureEXT topLevelAS;
-
 layout(location = 0) rayPayloadEXT vec3 payload;
 
 void main() {
-    vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + 0.5;
-    vec2 inUV = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
-    vec2 d = inUV * 2.0 - 1.0;
+    vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
+    vec2 uv = pixelCenter / vec2(gl_LaunchSizeEXT.xy);
+    
+    // Convert to NDC
+    vec4 rayDirClip = vec4(uv * 2.0 - 1.0, -1.0, 1.0);
+    
+    // Convert to view space
+    vec4 rayDirView = uniforms.projInverse * rayDirClip;
+    rayDirView = vec4(rayDirView.xy, -1.0, 0.0);
+    
+    // Convert to world space
+    vec3 rayDirection = normalize((uniforms.viewInverse * rayDirView).xyz);
+    vec3 rayOrigin = (uniforms.viewInverse * vec4(0, 0, 0, 1)).xyz;
 
-    vec4 origin = uniforms.viewInverse * vec4(0,0,0,1);
-    vec4 target = uniforms.projInverse * vec4(d.x, d.y, 1, 1);
-    vec4 direction = uniforms.viewInverse * vec4(normalize(target.xyz), 0);
-
-    uint rayFlags = gl_RayFlagsOpaqueEXT;
     float tMin = 0.001;
-    float tMax = 10000.0;
-    
-    payload = vec3(0); // Initialize payload
+    float tMax = 1000.0;
+
     traceRayEXT(
-        topLevelAS,
-        rayFlags,
-        0xFF,
-        0,
-        0,
-        0,
-        origin.xyz,
-        tMin,
-        direction.xyz,
-        tMax,
-        0 
-     );
-    
+        topLevelAS,         // accelerationStructure
+        gl_RayFlagsOpaqueEXT, // rayFlags
+        0xFF,               // cullMask
+        0,                  // sbtRecordOffset
+        0,                  // sbtRecordStride
+        0,                  // missIndex
+        rayOrigin,          // origin
+        tMin,              // Tmin
+        rayDirection,       // direction
+        tMax,              // Tmax
+        0                  // payload
+    );
+
+    // If we hit nothing, miss shader will have written the payload
     imageStore(storageImage, ivec2(gl_LaunchIDEXT.xy), vec4(payload, 1.0));
 }
