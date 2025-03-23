@@ -44,7 +44,6 @@ public:
         }
     }
 
-    // Explicit creation/destruction
     void create(
         VmaAllocator allocator,
         VkDevice device,
@@ -55,7 +54,8 @@ public:
 
     void destroy(VmaAllocator allocator) 
     {
-        if (handle != VK_NULL_HANDLE) {
+        if (handle != VK_NULL_HANDLE) 
+        {
             vmaDestroyBuffer(allocator, handle, allocation);
             handle = VK_NULL_HANDLE;
             allocation = VK_NULL_HANDLE;
@@ -65,7 +65,6 @@ public:
         _isDestroyed = true;
     }
 
-    // Data transfer operations
     void uploadData(
         VmaAllocator allocator,
         VkDevice device,
@@ -94,7 +93,6 @@ public:
         vmaUnmapMemory(allocator, allocation);
     }
 
-    // Move operations
     ManagedBuffer(ManagedBuffer&& other) noexcept 
     {
         *this = std::move(other);
@@ -137,13 +135,15 @@ public:
     StorageImage() = default;
     ~StorageImage() { destroy(); }
 
-    // Prevent copy operations
     StorageImage(const StorageImage&) = delete;
     StorageImage& operator=(const StorageImage&) = delete;
 
-    // Allow move operations
     StorageImage(StorageImage&& other) noexcept { moveFrom(std::move(other)); }
-    StorageImage& operator=(StorageImage&& other) noexcept { moveFrom(std::move(other)); return *this; }
+    StorageImage& operator=(StorageImage&& other) noexcept 
+    { 
+        moveFrom(std::move(other)); 
+        return *this; 
+    }
 
     void create(VmaAllocator alloc, VkDevice dev, VkExtent3D imgExtent, VkFormat imgFormat, VkImageUsageFlags usage)
     {

@@ -80,80 +80,94 @@ public:
         feature->sType = getStructureType<T>();
         feature->pNext = nullptr;
         
-        if (pNext == nullptr) {
+        if (pNext == nullptr) 
+        {
             pNext = feature;
-        } else {
-            // Find the last element in the chain
+        } 
+        else 
+        {
             VkBaseOutStructure* last = static_cast<VkBaseOutStructure*>(pNext);
-            while (last->pNext != nullptr) {
+            while (last->pNext != nullptr) 
+            {
                 last = static_cast<VkBaseOutStructure*>(last->pNext);
             }
             last->pNext = reinterpret_cast<VkBaseOutStructure*>(feature);
         }
         
-        // Store the feature pointer for cleanup
         features.push_back(feature);
         
         return feature;
     }
     
-    // Helper to quickly enable a feature flag with a single line
     template<typename T>
-    T* enableFeature(VkBool32 T::*featureFlag = nullptr) {
+    T* enableFeature(VkBool32 T::*featureFlag = nullptr) 
+    {
         T* feature = addFeature<T>();
-        if (featureFlag) {
+        if (featureFlag) 
+        {
             feature->*featureFlag = VK_TRUE;
         }
         return feature;
     }
     
-    // Get the head of the chain
-    void* getChainHead() const {
+    void* getChainHead() const 
+    {
         return pNext;
     }
     
-    // Query device features using this chain
-    void queryFeatures(VkPhysicalDevice device) {
+    void queryFeatures(VkPhysicalDevice device) 
+    {
         if (!pNext) return;
         
-        // Find the VkPhysicalDeviceFeatures2 in our chain
         VkBaseOutStructure* current = static_cast<VkBaseOutStructure*>(pNext);
-        while (current) {
-            if (current->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) {
+        while (current) 
+        {
+            if (current->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) 
+            {
                 vkGetPhysicalDeviceFeatures2(device, reinterpret_cast<VkPhysicalDeviceFeatures2*>(current));
                 return;
             }
             current = static_cast<VkBaseOutStructure*>(current->pNext);
         }
         
-        // If we didn't find it, add it at the start
         auto features2 = addFeature<VkPhysicalDeviceFeatures2>();
         vkGetPhysicalDeviceFeatures2(device, features2);
     }
     
-    // Clean up all allocated features
-    ~VulkanFeatureChain() {
-        for (auto feat : features) {
+    ~VulkanFeatureChain() 
+    {
+        for (auto feat : features) 
+        {
             delete feat;
         }
     }
 
 private:
-    // Helper to get the appropriate sType for different feature structs
     template<typename T>
-    VkStructureType getStructureType() {
-        if constexpr (std::is_same_v<T, VkPhysicalDeviceFeatures2>) {
+    VkStructureType getStructureType() 
+    {
+        if constexpr (std::is_same_v<T, VkPhysicalDeviceFeatures2>) 
+        {
             return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        } else if constexpr (std::is_same_v<T, VkPhysicalDeviceRayTracingPipelineFeaturesKHR>) {
+        } 
+        else if constexpr (std::is_same_v<T, VkPhysicalDeviceRayTracingPipelineFeaturesKHR>) 
+        {
             return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-        } else if constexpr (std::is_same_v<T, VkPhysicalDeviceAccelerationStructureFeaturesKHR>) {
+        } 
+        else if constexpr (std::is_same_v<T, VkPhysicalDeviceAccelerationStructureFeaturesKHR>) 
+        {
             return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        } else if constexpr (std::is_same_v<T, VkPhysicalDeviceBufferDeviceAddressFeatures>) {
+        } 
+        else if constexpr (std::is_same_v<T, VkPhysicalDeviceBufferDeviceAddressFeatures>) 
+        {
             return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-        } else if constexpr (std::is_same_v<T, VkPhysicalDeviceSynchronization2FeaturesKHR>) {
+        } 
+        else if constexpr (std::is_same_v<T, VkPhysicalDeviceSynchronization2FeaturesKHR>) 
+        {
             return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
-        } else {
-            // Add more types as needed
+        } 
+        else 
+        {
             static_assert(std::is_void_v<T>, "Unsupported feature type");
             return static_cast<VkStructureType>(0);
         }

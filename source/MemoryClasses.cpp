@@ -3,7 +3,6 @@
 
 void ScratchBuffer::createScratchBuffer(VmaAllocator allocator, VkDevice device, VkDeviceSize size, ScratchBuffer& scratchBuffer)
 {
-    // Create scratch buffer
     VkBufferCreateInfo bufferInfo{};
     bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
     bufferInfo.size = size;
@@ -16,7 +15,6 @@ void ScratchBuffer::createScratchBuffer(VmaAllocator allocator, VkDevice device,
 
     vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &scratchBuffer.handle, &scratchBuffer.allocation, nullptr);
 
-    // Get the device address for the scratch buffer
     VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
     bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     bufferDeviceAddressInfo.buffer = scratchBuffer.handle;
@@ -45,7 +43,6 @@ void ManagedBuffer::create(
     size = bufferSize;
     type = bufferType;
 
-    // Always add this flag for all buffers (needed for ray tracing)
     usage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     VkBufferCreateInfo bufferInfo{};
@@ -73,7 +70,6 @@ void ManagedBuffer::create(
         throw std::runtime_error("Failed to create buffer!");
     }
 
-    // Get the device address if needed for ray tracing
     VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
     bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     bufferDeviceAddressInfo.buffer = handle;
@@ -92,7 +88,6 @@ void ManagedBuffer::uploadData(
     VkDeviceSize offset
 )
 {
-    // Create a staging buffer
     ManagedBuffer stagingBuffer;
     stagingBuffer.create(
         allocator,
@@ -102,10 +97,8 @@ void ManagedBuffer::uploadData(
         BufferType::HostVisible
     );
 
-    // Copy data to staging buffer
     stagingBuffer.updateData(allocator, data, dataSize);
 
-    // Record command buffer for transfer
     VkCommandBufferBeginInfo beginInfo{};
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
@@ -120,7 +113,6 @@ void ManagedBuffer::uploadData(
 
     vkEndCommandBuffer(commandBuffer);
 
-    // Submit and wait for completion
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
@@ -136,6 +128,5 @@ void ManagedBuffer::uploadData(
 
     vkDestroyFence(device, fence, nullptr);
     
-    // Clean up the staging buffer
     stagingBuffer.destroy(allocator);
 } 
