@@ -3,3 +3,10 @@ out/
 build/
 lib/
 
+*.exe
+*.dll
+*.lib
+*.exp
+*.pdb
+*.obj
+*.res

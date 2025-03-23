@@ -1,6 +1,5 @@
 #pragma once
 
-
 #define ALLOC_VMA
 #include "vma/vk_mem_alloc.h"
 
@@ -13,7 +12,6 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
-#include "Camera.h"
 #include "FirstPersonCamera.h"
 #include "Timer.h"
 
@@ -32,6 +30,12 @@
 #include <limits>
 #include <algorithm> 
 #include <array>
+
+#ifdef NDEBUG
+#pragma comment(lib, "shaderc_combined.lib")
+#else
+#pragma comment(lib, "shaderc_combinedd.lib")
+#endif
 
 namespace Shader
 {
