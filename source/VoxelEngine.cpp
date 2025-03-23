@@ -344,34 +344,24 @@ bool VoxelEngine::isDeviceSuitable(VkPhysicalDevice device)
 		swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
 	}
 
-	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{};
-    rayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR accelerationStructureFeatures{};
-    accelerationStructureFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-    accelerationStructureFeatures.pNext = &rayTracingPipelineFeatures;
-
-    VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
-    bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-    bufferDeviceAddressFeatures.pNext = &accelerationStructureFeatures;
-
-	VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2Features{};
-	synchronization2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
-	synchronization2Features.pNext = &bufferDeviceAddressFeatures;
-
-
-    VkPhysicalDeviceFeatures2 physicalFeatures2{};
-    physicalFeatures2.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-    physicalFeatures2.pNext = &synchronization2Features;
-
-    vkGetPhysicalDeviceFeatures2(device, &physicalFeatures2);
+	// Setup feature chain for device suitability check
+	VulkanFeatureChain queryChain;
+	
+	// Add all required features to the chain with the simplified method
+	auto sync2Features = queryChain.enableFeature<VkPhysicalDeviceSynchronization2FeaturesKHR>(&VkPhysicalDeviceSynchronization2FeaturesKHR::synchronization2);
+	auto bufferDeviceAddressFeatures = queryChain.enableFeature<VkPhysicalDeviceBufferDeviceAddressFeatures>(&VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress);
+	auto accStructFeatures = queryChain.enableFeature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(&VkPhysicalDeviceAccelerationStructureFeaturesKHR::accelerationStructure);
+	auto rtPipelineFeatures = queryChain.enableFeature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(&VkPhysicalDeviceRayTracingPipelineFeaturesKHR::rayTracingPipeline);
+	
+	// Query all features at once
+	queryChain.queryFeatures(device);
 
 	bool hasRequiredDeviceFeatures =
 		deviceFeatures.geometryShader &&
-		bufferDeviceAddressFeatures.bufferDeviceAddress &&
-		accelerationStructureFeatures.accelerationStructure &&
-		rayTracingPipelineFeatures.rayTracingPipeline &&
-		synchronization2Features.synchronization2;
+		bufferDeviceAddressFeatures->bufferDeviceAddress &&
+		accStructFeatures->accelerationStructure &&
+		rtPipelineFeatures->rayTracingPipeline &&
+		sync2Features->synchronization2;
 
 	return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && hasRequiredDeviceFeatures && indices.isComplete() && extensionsSupported && swapChainAdequate;
 }
@@ -477,34 +467,21 @@ void VoxelEngine::createLogicalDevice()
 		queueCreateInfos.push_back(queueCreateInfo);
 	}
 
-	VkPhysicalDeviceFeatures deviceFeatures{};
-
-	VkPhysicalDeviceFeatures2 deviceExtensionFeatures{};
-	deviceExtensionFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-
-	VkPhysicalDeviceRayTracingPipelineFeaturesKHR rayTracingPipelineFeatures{};
-    rayTracingPipelineFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-	rayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-
-	accelerationStructureFeatures.accelerationStructure = VK_TRUE;
-    accelerationStructureFeatures.pNext = &rayTracingPipelineFeatures;
-
-	VkPhysicalDeviceBufferDeviceAddressFeatures bufferDeviceAddressFeatures{};
-    bufferDeviceAddressFeatures.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-	bufferDeviceAddressFeatures.bufferDeviceAddress = VK_TRUE;
-    bufferDeviceAddressFeatures.pNext = &accelerationStructureFeatures;
-
-	VkPhysicalDeviceSynchronization2FeaturesKHR synchronization2Features{};
-	synchronization2Features.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
-	synchronization2Features.synchronization2 = VK_TRUE;
-
-	synchronization2Features.pNext = &bufferDeviceAddressFeatures;
-
-	deviceExtensionFeatures.pNext = &synchronization2Features;
+	// Initialize device features using our feature chain with the simplified method
+	auto rtPipelineFeatures = featureChain.enableFeature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(&VkPhysicalDeviceRayTracingPipelineFeaturesKHR::rayTracingPipeline);
+	
+	accelerationStructureFeatures = featureChain.enableFeature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(&VkPhysicalDeviceAccelerationStructureFeaturesKHR::accelerationStructure);
+	
+	auto bufferDeviceAddressFeatures = featureChain.enableFeature<VkPhysicalDeviceBufferDeviceAddressFeatures>(&VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress);
+	
+	auto sync2Features = featureChain.enableFeature<VkPhysicalDeviceSynchronization2FeaturesKHR>(&VkPhysicalDeviceSynchronization2FeaturesKHR::synchronization2);
+	
+	// Add Features2 at the end of our chain
+	auto deviceExtensionFeatures = featureChain.addFeature<VkPhysicalDeviceFeatures2>();
 
     VkDeviceCreateInfo createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pNext = &deviceExtensionFeatures;
+	createInfo.pNext = featureChain.getChainHead();
     createInfo.pQueueCreateInfos = queueCreateInfos.data();
     createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
     createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
