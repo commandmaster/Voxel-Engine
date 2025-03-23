@@ -2,6 +2,7 @@
 out/
 build/
 lib/
+.vscode
 
 *.exe
 *.dll
