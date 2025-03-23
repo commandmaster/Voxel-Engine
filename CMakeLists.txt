@@ -46,7 +46,7 @@ add_library(imgui STATIC
     # Add ImGui backends
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
- "source/VoxelEngine.hpp" "source/main.cpp"    "source/Device.h" "source/FirstPersonCamera.h" "source/Chunk.h" "source/Chunk.cpp")
+ "source/VoxelEngine.hpp" "source/main.cpp"     "source/FirstPersonCamera.h" "source/Chunk.h" "source/Chunk.cpp" )
 
 target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
@@ -66,7 +66,18 @@ include_directories(${glm_SOURCE_DIR})
 
 target_link_libraries(imgui PRIVATE glfw)
 
-add_executable (VoxelEngine "source/VoxelEngine.cpp" "source/VoxelEngine.hpp" "source/main.cpp"  "source/Device.h" "source/Device.cpp" "source/Timer.h" "source/Timer.cpp" "source/FirstPersonCamera.h" "source/Chunk.h" "source/Chunk.cpp")
+add_executable (VoxelEngine 
+    "source/VoxelEngine.cpp" 
+    "source/VoxelEngine.hpp" 
+    "source/main.cpp"    
+    "source/Timer.h" 
+    "source/Timer.cpp" 
+    "source/FirstPersonCamera.h" 
+    "source/Chunk.h" 
+    "source/Chunk.cpp"
+    "source/MemoryClasses.hpp"
+    "source/MemoryClasses.cpp"
+)
 set_property(TARGET VoxelEngine PROPERTY CXX_STANDARD 20)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
