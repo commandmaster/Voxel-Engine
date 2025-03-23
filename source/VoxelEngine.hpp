@@ -65,7 +65,6 @@ const std::vector<const char*> deviceExtensions = {
     VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
 };
 
-// Simple templated feature chain for Vulkan extensions
 class VulkanFeatureChain 
 {
 private:
@@ -73,18 +72,14 @@ private:
     std::vector<void*> features;
 
 public:
-    // Add a feature to the chain and return a pointer to the feature for further configuration
     template<typename T>
     T* addFeature() 
     {
-        // Create a new feature struct
         T* feature = new T{};
         
-        // Initialize the struct with its sType
         feature->sType = getStructureType<T>();
         feature->pNext = nullptr;
         
-        // Chain it to the previous structure
         if (pNext == nullptr) {
             pNext = feature;
         } else {

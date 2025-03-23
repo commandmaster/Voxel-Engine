@@ -1,0 +1,9 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+
+
+- Use Allman style braces and the visual studio c++ format standard
+- Only comment code that is very confusing and comment infrequently
