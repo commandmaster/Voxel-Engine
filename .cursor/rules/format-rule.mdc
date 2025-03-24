@@ -4,6 +4,9 @@ globs:
 alwaysApply: true
 ---
 
-
+# Formating Rules
 - Use Allman style braces and the visual studio c++ format standard
 - Only comment code that is very confusing and comment infrequently
+- all member variables and should follow camel case, as do methods and functions
+- classes should have public members and methods first then private ones
+- macros and constexpr variables should be all uppercase with a _ in between words

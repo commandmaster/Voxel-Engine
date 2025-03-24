@@ -36,6 +36,15 @@ FetchContent_Declare(
 
 FetchContent_MakeAvailable(glfw glm imgui jsoncpp)
 
+# Use file globbing to find all source files
+file(GLOB_RECURSE SOURCE_FILES 
+    "${CMAKE_SOURCE_DIR}/source/*.cpp"
+    "${CMAKE_SOURCE_DIR}/source/*.c"
+    "${CMAKE_SOURCE_DIR}/source/*.hpp"
+    "${CMAKE_SOURCE_DIR}/source/*.h"
+)
+
+# ImGui library setup
 add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/imgui.cpp
     ${imgui_SOURCE_DIR}/imgui_draw.cpp
@@ -46,7 +55,8 @@ add_library(imgui STATIC
     # Add ImGui backends
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
- "source/VoxelEngine.hpp" "source/main.cpp"     "source/FirstPersonCamera.h" "source/Chunk.h" "source/Chunk.cpp" )
+    ${SOURCE_FILES}
+)
 
 target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
@@ -56,7 +66,6 @@ target_include_directories(imgui PUBLIC
 set_property(TARGET imgui PROPERTY CXX_STANDARD 20)
 
 include_directories(${CMAKE_SOURCE_DIR}/include)
-
 link_directories(${CMAKE_SOURCE_DIR}/lib)
 
 find_package(Vulkan REQUIRED)
@@ -66,18 +75,7 @@ include_directories(${glm_SOURCE_DIR})
 
 target_link_libraries(imgui PRIVATE glfw)
 
-add_executable (VoxelEngine 
-    "source/VoxelEngine.cpp" 
-    "source/VoxelEngine.hpp" 
-    "source/main.cpp"    
-    "source/Timer.h" 
-    "source/Timer.cpp" 
-    "source/FirstPersonCamera.h" 
-    "source/Chunk.h" 
-    "source/Chunk.cpp"
-    "source/MemoryClasses.hpp"
-    "source/MemoryClasses.cpp"
-)
+add_executable(VoxelEngine ${SOURCE_FILES})
 set_property(TARGET VoxelEngine PROPERTY CXX_STANDARD 20)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
