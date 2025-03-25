@@ -17,6 +17,7 @@ struct RayPayload
     float distance;
     vec3 normal;
     uint seed;
+    vec4 debugColor;
 };
 
 layout(location = 0) rayPayloadEXT RayPayload payload;
@@ -36,6 +37,12 @@ float rand(inout uint seed)
     seed = initRand(seed);
     return float(seed) / float(0xffffffffu);
 }
+
+vec4 blendColors(vec4 src, vec4 dst) 
+{
+    return vec4(mix(dst.rgb, src.rgb, src.a), dst.a + src.a * (1.0 - dst.a));
+}
+
 
 void main() {
     vec2 pixelCenter = vec2(gl_LaunchIDEXT.xy) + vec2(0.5);
@@ -57,6 +64,7 @@ void main() {
         uint(gl_LaunchIDEXT.x) + 
         uint(gl_LaunchIDEXT.y) * gl_LaunchSizeEXT.x + 
         uint(gl_LaunchIDEXT.z) * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y);
+    payload.debugColor = vec4(0.0);
 
     float tMin = 0.001;
     float tMax = 1000.0;
@@ -75,6 +83,9 @@ void main() {
         0                  // payload
     );
 
+
+    vec4 finalColor = mix(vec4(payload.color, 1.0), payload.debugColor, payload.debugColor.a);
+
     // If we hit nothing, miss shader will have written the payload
-    imageStore(storageImage, ivec2(gl_LaunchIDEXT.xy), vec4(payload.color.xyz, 1.0));
+    imageStore(storageImage, ivec2(gl_LaunchIDEXT.xy), finalColor);
 }

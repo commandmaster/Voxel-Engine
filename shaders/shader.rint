@@ -9,10 +9,21 @@ layout(binding = 3) buffer SphereBuffer
 
 layout(binding = 1, rgba32f) uniform image2D storageImage;
 
-hitAttributeEXT vec3 attribs;
+
+struct HitInformation
+{
+    vec3 normal;
+    bool debugHit;
+};
+
+
+hitAttributeEXT HitInformation attribs;
+
 
 void main() {
     uint sphereIdx = gl_PrimitiveID;
+    attribs.debugHit = false;
+
     vec4 sphere = spheres[sphereIdx];
     vec3 center = sphere.xyz;
     float radius = sphere.w;
@@ -35,14 +46,20 @@ void main() {
         float t = min(t1, t2);
         if (t >= gl_RayTminEXT && t <= gl_RayTmaxEXT) 
         {
-            attribs = normalize(rayOrigin + t*rayDir - center);
+            attribs.normal = normalize(rayOrigin + t*rayDir - center);
             reportIntersectionEXT(t, 0);
+            return;
         } 
         else if (t2 >= gl_RayTminEXT && t2 <= gl_RayTmaxEXT) 
         {
             t = t2;
-            attribs = normalize(rayOrigin + t*rayDir - center);
+            attribs.normal = normalize(rayOrigin + t*rayDir - center);
             reportIntersectionEXT(t, 0);
+            return;
         }
     }
+
+
+    attribs.debugHit = true;
+    reportIntersectionEXT(10, 0);
 }

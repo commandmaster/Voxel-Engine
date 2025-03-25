@@ -15,6 +15,7 @@
 #include "FirstPersonCamera.h"
 #include "Timer.h"
 #include "MemoryClasses.hpp"
+#include "AccelerationStructure.h"
 
 #include <iostream>
 #include <fstream>
@@ -202,13 +203,6 @@ struct SwapChainSupportDetails
 struct Sphere 
 {
     glm::vec4 positionRadius; // xyz=position, w=radius
-};
-
-struct AccelerationStructure
-{
-    VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
-    uint64_t deviceAddress;
-    ManagedBuffer buffer;
 };
 
 class VoxelEngine 
@@ -498,7 +492,7 @@ private:
     bool firstMouse = true;
 
     StorageImage outputImage;
-    StorageImage accumulationImage;
+    StorageImage debugImage;
 
     VmaAllocator vmaAllocator = VK_NULL_HANDLE;
     
@@ -632,7 +626,7 @@ private:
 
     void createSphereBuffer();
 
-    void recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame);
+    void recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame);
 
     void updateUniformBuffersRT();
 

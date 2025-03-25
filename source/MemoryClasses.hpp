@@ -6,6 +6,10 @@
 #include <glm/glm.hpp>
 #include <stdexcept>
 #include <cstring>
+#include <memory>
+#include <iostream>
+
+#include "Buffer.hpp"
 
 
 struct ScratchBuffer

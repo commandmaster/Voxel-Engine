@@ -778,7 +778,7 @@ uint64_t VoxelEngine::getBufferDeviceAddress(VkBuffer buffer)
 void VoxelEngine::createStorageImages()
 {
 		outputImage.destroy();
-		accumulationImage.destroy();
+		debugImage.destroy();
 
         VkExtent3D extent;
         extent.depth = 1;
@@ -786,7 +786,7 @@ void VoxelEngine::createStorageImages()
         extent.height = swapChainExtent.height;
 
 		
-        accumulationImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+        debugImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
 		outputImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
 
         // Transition layout from UNDEFINED to GENERAL
@@ -798,7 +798,7 @@ void VoxelEngine::createStorageImages()
         barrier.newLayout = VK_IMAGE_LAYOUT_GENERAL;
         barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
         barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
-		barrier.image = accumulationImage.image;
+		barrier.image = debugImage.image;
 		barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
         barrier.subresourceRange.baseMipLevel = 0;
         barrier.subresourceRange.levelCount = 1;
@@ -834,12 +834,6 @@ void VoxelEngine::createStorageImages()
 
 void VoxelEngine::createBLAS()
 {
-    struct VkAabbPositionsKHR
-    {
-        float minX, minY, minZ;
-        float maxX, maxY, maxZ;
-    };
-
     std::vector<VkAabbPositionsKHR> aabbs{};
     aabbs.reserve(spheres.size());
 
@@ -859,8 +853,7 @@ void VoxelEngine::createBLAS()
     VkDeviceSize aabbBufferSize = aabbs.size() * sizeof(VkAabbPositionsKHR);
 
     const VkBufferUsageFlags bufferUsageFlags = 
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | 
-        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     ManagedBuffer aabbBuffer;
     aabbBuffer.create(vmaAllocator, device, aabbBufferSize, 
@@ -971,7 +964,8 @@ void VoxelEngine::createBLAS()
 
 void VoxelEngine::createTLAS()
 {
-	VkTransformMatrixKHR transformMatrix = {
+	VkTransformMatrixKHR transformMatrix = 
+	{
         1.0f, 0.0f, 0.0f, 0.0f,
         0.0f, 1.0f, 0.0f, 0.0f,
         0.0f, 0.0f, 1.0f, 0.0f
@@ -1081,6 +1075,7 @@ void VoxelEngine::createTLAS()
     addressInfo.accelerationStructure = tlasHandle;
     topLevelAccelerationStructure.deviceAddress = 
         vkGetAccelerationStructureDeviceAddressKHR(device, &addressInfo);
+
 	
 }
 
@@ -1172,7 +1167,7 @@ void VoxelEngine::createDescriptorSetsRT()
     poolSizes[0].type = VK_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR;
     poolSizes[0].descriptorCount = MAX_FRAMES_IN_FLIGHT;
     poolSizes[1].type = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    poolSizes[1].descriptorCount = MAX_FRAMES_IN_FLIGHT * 2; // For output and accumulation images
+    poolSizes[1].descriptorCount = MAX_FRAMES_IN_FLIGHT * 2; // For output and debug images
     poolSizes[2].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     poolSizes[2].descriptorCount = MAX_FRAMES_IN_FLIGHT;
     poolSizes[3].type = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
@@ -1269,18 +1264,18 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     sphereWrite.pBufferInfo = &sphereBufferInfo;
     descriptorWrites.push_back(sphereWrite);
 
-    VkDescriptorImageInfo accumulationImageInfo{};
-	accumulationImageInfo.imageView = accumulationImage.view;
-	accumulationImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
+    VkDescriptorImageInfo debugImageInfo{};
+	debugImageInfo.imageView = debugImage.view;
+	debugImageInfo.imageLayout = VK_IMAGE_LAYOUT_GENERAL;
 
-    VkWriteDescriptorSet accumulationImageWrite{};
-    accumulationImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-    accumulationImageWrite.dstSet = descriptorSetsRT[index];
-    accumulationImageWrite.dstBinding = 4;
-    accumulationImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
-    accumulationImageWrite.descriptorCount = 1;
-    accumulationImageWrite.pImageInfo = &accumulationImageInfo;
-    descriptorWrites.push_back(accumulationImageWrite);
+    VkWriteDescriptorSet debugImageWrite{};
+    debugImageWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+    debugImageWrite.dstSet = descriptorSetsRT[index];
+    debugImageWrite.dstBinding = 4;
+    debugImageWrite.descriptorType = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
+    debugImageWrite.descriptorCount = 1;
+    debugImageWrite.pImageInfo = &debugImageInfo;
+    descriptorWrites.push_back(debugImageWrite);
 
     vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
@@ -1522,7 +1517,7 @@ void VoxelEngine::createSphereBuffer()
     sphereBuffer.updateData(vmaAllocator, spheres.data(), bufferSize);
 }
 
-void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)
+void VoxelEngine::recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)
 {	
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipeline);
     
@@ -1551,9 +1546,7 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
     hitRegion.size = rtProperties.shaderGroupHandleSize;
     
     VkStridedDeviceAddressRegionKHR callableRegion{};
-
     
-    // Trace rays - this is the actual ray tracing work
     vkCmdTraceRaysKHR(
         commandBuffer,
         &raygenRegion, 
@@ -1564,7 +1557,6 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
         swapChainExtent.height, 
         1
     );
-	
 
 	VkImageMemoryBarrier barrier{};
     barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -1688,8 +1680,6 @@ void VoxelEngine::recordCommandBufferRT(VkCommandBuffer commandBuffer, uint32_t 
     vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
     ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
     vkCmdEndRenderPass(commandBuffer);
-
-
 }
 
 void VoxelEngine::updateUniformBuffersRT()
@@ -1853,7 +1843,7 @@ void VoxelEngine::drawFrameRT()
     }
     
 
-    recordCommandBufferRT(commandBuffers[currentFrame], imageIndex, currentFrame);
+    recordFrameCommands(commandBuffers[currentFrame], imageIndex, currentFrame);
 
     if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS) {
         throw std::runtime_error("failed to record command buffer!");
@@ -2002,7 +1992,7 @@ void VoxelEngine::cleanupRayTracing()
 	closestHitShaderBindingTable.destroy(vmaAllocator);
 
 	outputImage.destroy();
-	accumulationImage.destroy();
+	debugImage.destroy();
 
 	for (auto& ubo : uniformBuffersRT)
 	{
