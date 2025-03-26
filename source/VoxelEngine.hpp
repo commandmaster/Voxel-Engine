@@ -51,157 +51,6 @@ namespace Shader
    VkShaderModule createShaderModule(VkDevice device, const std::vector<uint32_t>& spirv);
 }
 
-const std::vector<const char*> validationLayers = {
-    "VK_LAYER_KHRONOS_validation",
-};
-
-const std::vector<const char*> deviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,
-    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,
-    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,
-    VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,
-    VK_KHR_SPIRV_1_4_EXTENSION_NAME,
-    VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME,
-    VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME,
-    VK_EXT_DESCRIPTOR_INDEXING_EXTENSION_NAME, 
-    VK_KHR_BIND_MEMORY_2_EXTENSION_NAME,
-    VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-};
-
-class VulkanFeatureChain 
-{
-private:
-    void* pNext = nullptr;
-    std::vector<void*> features;
-
-public:
-    template<typename T>
-    T* addFeature() 
-    {
-        T* feature = new T{};
-        
-        feature->sType = getStructureType<T>();
-        feature->pNext = nullptr;
-        
-        if (pNext == nullptr) 
-        {
-            pNext = feature;
-        } 
-        else 
-        {
-            VkBaseOutStructure* last = static_cast<VkBaseOutStructure*>(pNext);
-            while (last->pNext != nullptr) 
-            {
-                last = static_cast<VkBaseOutStructure*>(last->pNext);
-            }
-            last->pNext = reinterpret_cast<VkBaseOutStructure*>(feature);
-        }
-        
-        features.push_back(feature);
-        
-        return feature;
-    }
-    
-    template<typename T>
-    T* enableFeature(VkBool32 T::*featureFlag = nullptr) 
-    {
-        T* feature = addFeature<T>();
-        if (featureFlag) 
-        {
-            feature->*featureFlag = VK_TRUE;
-        }
-        return feature;
-    }
-    
-    void* getChainHead() const 
-    {
-        return pNext;
-    }
-    
-    void queryFeatures(VkPhysicalDevice device) 
-    {
-        if (!pNext) return;
-        
-        VkBaseOutStructure* current = static_cast<VkBaseOutStructure*>(pNext);
-        while (current) 
-        {
-            if (current->sType == VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2) 
-            {
-                vkGetPhysicalDeviceFeatures2(device, reinterpret_cast<VkPhysicalDeviceFeatures2*>(current));
-                return;
-            }
-            current = static_cast<VkBaseOutStructure*>(current->pNext);
-        }
-        
-        auto features2 = addFeature<VkPhysicalDeviceFeatures2>();
-        vkGetPhysicalDeviceFeatures2(device, features2);
-    }
-    
-    ~VulkanFeatureChain() 
-    {
-        for (auto feat : features) 
-        {
-            delete feat;
-        }
-    }
-
-private:
-    template<typename T>
-    VkStructureType getStructureType() 
-    {
-        if constexpr (std::is_same_v<T, VkPhysicalDeviceFeatures2>) 
-        {
-            return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2;
-        } 
-        else if constexpr (std::is_same_v<T, VkPhysicalDeviceRayTracingPipelineFeaturesKHR>) 
-        {
-            return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR;
-        } 
-        else if constexpr (std::is_same_v<T, VkPhysicalDeviceAccelerationStructureFeaturesKHR>) 
-        {
-            return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR;
-        } 
-        else if constexpr (std::is_same_v<T, VkPhysicalDeviceBufferDeviceAddressFeatures>) 
-        {
-            return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_BUFFER_DEVICE_ADDRESS_FEATURES;
-        } 
-        else if constexpr (std::is_same_v<T, VkPhysicalDeviceSynchronization2FeaturesKHR>) 
-        {
-            return VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES_KHR;
-        } 
-        else 
-        {
-            static_assert(std::is_void_v<T>, "Unsupported feature type");
-            return static_cast<VkStructureType>(0);
-        }
-    }
-};
-
-#ifdef NDEBUG
-	constexpr bool enableValidationLayers = false;
-#else
-	constexpr bool enableValidationLayers = true;
-#endif
-
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger);
-
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator);
-
-struct QueueFamilyIndices 
-{
-    std::optional<uint32_t> graphicsFamily;
-    std::optional<uint32_t> presentFamily;
-
-    inline bool isComplete() const { return graphicsFamily.has_value() && presentFamily.has_value(); }
-};
-
-struct SwapChainSupportDetails 
-{
-    VkSurfaceCapabilitiesKHR capabilities;
-    std::vector<VkSurfaceFormatKHR> formats;
-    std::vector<VkPresentModeKHR> presentModes;
-};
 
 struct Sphere 
 {
@@ -222,7 +71,6 @@ public:
     void run() 
     {
         initWindow();
-        VulkanContext::Init(window, windowName.c_str());
         initVulkan();
         mainLoop();
         cleanup();
@@ -231,24 +79,6 @@ public:
     VoxelEngine(VoxelEngine const&) = delete;
     void operator=(VoxelEngine const&) = delete;
     
-
-public:
-	static PFN_vkQueueSubmit2KHR vkQueueSubmit2KHR;
-    
-    static PFN_vkGetAccelerationStructureBuildSizesKHR vkGetAccelerationStructureBuildSizesKHR;
-	static PFN_vkCreateAccelerationStructureKHR vkCreateAccelerationStructureKHR;
-	static PFN_vkGetAccelerationStructureDeviceAddressKHR vkGetAccelerationStructureDeviceAddressKHR;
-	static PFN_vkCmdBuildAccelerationStructuresKHR vkCmdBuildAccelerationStructuresKHR;
-    static PFN_vkBuildAccelerationStructuresKHR vkBuildAccelerationStructuresKHR;
-
-	static PFN_vkDestroyAccelerationStructureKHR vkDestroyAccelerationStructureKHR;
-
-    static PFN_vkGetRayTracingShaderGroupHandlesKHR vkGetRayTracingShaderGroupHandlesKHR;
-	static PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
-	static PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
-  
-    static PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
-
 private:
     struct UniformData
     {
@@ -442,19 +272,6 @@ private:
     } imguiHandler;
 
     
-	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback
-    (
-		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-		VkDebugUtilsMessageTypeFlagsEXT messageType,
-		const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
-		void* pUserData
-    ) 
-    {
-		std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
-		return VK_FALSE;
-    }
-
     const uint32_t WIDTH = 800;
     const uint32_t HEIGHT = 600;
 
@@ -468,16 +285,6 @@ private:
 
     GLFWwindow* window;
 
-    VkInstance instance;
-    VkDebugUtilsMessengerEXT debugMessenger;
-
-    VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
-    VkDevice device;
-
-    VkQueue graphicsQueue;
-    VkQueue presentQueue;
-    VkSurfaceKHR surface;
-
     VkSwapchainKHR swapChain;
     std::vector<VkImage> swapChainImages;
 	VkFormat swapChainImageFormat;
@@ -485,7 +292,6 @@ private:
     std::vector<VkImageView> swapChainImageViews;
     std::vector<VkImageLayout> swapChainImageLayouts; 
 
-    VkCommandPool commandPool;
     std::vector<VkCommandBuffer> commandBuffers;
 
     std::vector<VkSemaphore> imageAvailableSemaphores;
@@ -508,12 +314,6 @@ private:
 
     StorageImage outputImage;
     StorageImage debugImage;
-
-    VmaAllocator vmaAllocator = VK_NULL_HANDLE;
-    
-    VulkanFeatureChain featureChain;
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR* accelerationStructureFeatures = nullptr;
-    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
 
     VkPipeline rtPipeline = VK_NULL_HANDLE;
     VkPipelineLayout rtPipelineLayout = VK_NULL_HANDLE;
@@ -559,51 +359,21 @@ private:
 
     void initWindow();
 
-    std::vector<const char*> getRequiredExtensions();
-
-    bool checkValidationLayerSupport();
-
-    void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo);
-
-    void setupDebugMessenger();
-
-    void createInstance();
-    
-    QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
-
-    bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-
-	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-
-	bool isDeviceSuitable(VkPhysicalDevice device);
-
     VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats);
 
     VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes);
 
     VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities);
 
-    void pickPhysicalDevice();
-    
-    void createLogicalDevice();
-
-    void createSurface();
-
     void createSwapChain();
 
     void createImageViews();
-
-    void createCommandPool();
-
 
     VkCommandBuffer createCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level, bool singleUse);
 
     void flushCommandBuffer(VkDevice device, VkCommandBuffer commandBuffer, VkQueue queue, VkCommandPool commandPool, bool free);
     
     void createCommandBuffers();
-
-
-    void initVMA();
 
     uint64_t getBufferDeviceAddress(VkBuffer buffer);
 
@@ -647,13 +417,8 @@ private:
     
     void initVulkan() 
     {
-        createInstance();
-		setupDebugMessenger();
-		createSurface();
-		pickPhysicalDevice();
-		createLogicalDevice();
-		initVMA();
-		createCommandPool();
+        VulkanContext::Init(window, windowName.c_str());
+
 		createSwapChain();
 		createImageViews();
 		createSyncObjects(); 
@@ -668,8 +433,8 @@ private:
 		createShaderBindingTables();
 		createDescriptorSetsRT();        
 
-        auto queueFamilyIndicies = findQueueFamilies(physicalDevice);
-        imguiHandler.initImgui(window, instance, physicalDevice, device, queueFamilyIndicies.graphicsFamily.value(), graphicsQueue, static_cast<uint32_t>(swapChainImages.size()), swapChainImageViews, swapChainExtent, swapChainImageFormat);
+        auto queueFamilyIndicies = VulkanContext::FindQueueFamilies(VulkanContext::physicalDevice);
+        imguiHandler.initImgui(window, VulkanContext::instance, VulkanContext::physicalDevice, VulkanContext::device, queueFamilyIndicies.graphicsFamily.value(), VulkanContext::graphicsQueue, static_cast<uint32_t>(swapChainImages.size()), swapChainImageViews, swapChainExtent, swapChainImageFormat);
     }
 
     void recreateSwapChain();
@@ -734,7 +499,7 @@ private:
 			}
 		}
 		
-		vkDeviceWaitIdle(device);
+		vkDeviceWaitIdle(VulkanContext::device);
 	}
 
     void cleanup();

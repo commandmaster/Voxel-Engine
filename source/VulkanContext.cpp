@@ -125,7 +125,7 @@ namespace VulkanContext
     VkDebugUtilsMessengerEXT debugMessenger = VK_NULL_HANDLE;
     VkQueue graphicsQueue = VK_NULL_HANDLE;
     VkQueue presentQueue = VK_NULL_HANDLE;
-    VmaAllocator allocator = VK_NULL_HANDLE;
+    VmaAllocator vmaAllocator = VK_NULL_HANDLE;
     VkCommandPool commandPool = VK_NULL_HANDLE;
     VkSurfaceKHR surface = VK_NULL_HANDLE;
 
@@ -140,6 +140,8 @@ namespace VulkanContext
 	PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR = nullptr;
 	PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR = nullptr;
 	PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR = nullptr;
+
+	VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtProperties = { VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR };
 
 
     const std::vector<const char*> validationLayers = 
@@ -502,6 +504,12 @@ namespace VulkanContext
 			queueCreateInfo.pQueuePriorities = &queuePriority;
 			queueCreateInfos.push_back(queueCreateInfo);
 		}
+
+        rtProperties.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR;
+        VkPhysicalDeviceProperties2 prop2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+        prop2.pNext = &rtProperties;
+		vkGetPhysicalDeviceProperties2(physicalDevice, &prop2);
+
 		
 		VulkanFeatureChain featureChain;
 
@@ -626,7 +634,8 @@ namespace VulkanContext
         allocatorInfo.physicalDevice = physicalDevice;
         allocatorInfo.device = device;
         allocatorInfo.instance = instance;
-        vmaCreateAllocator(&allocatorInfo, &allocator);
+		allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+		vmaCreateAllocator(&allocatorInfo, &vmaAllocator);
 
 		createCommandPool();
     }
@@ -634,7 +643,7 @@ namespace VulkanContext
     void Cleanup() 
     {
 		vkDestroyCommandPool(device, commandPool, nullptr);
-		vmaDestroyAllocator(allocator);
+		vmaDestroyAllocator(vmaAllocator);
 		
 		if (enableValidationLayers)
 		{

@@ -16,7 +16,7 @@ namespace VulkanContext
     extern VkDevice device;
     extern VkQueue graphicsQueue;
     extern VkQueue presentQueue;
-    extern VmaAllocator allocator;
+    extern VmaAllocator vmaAllocator;
     extern VkCommandPool commandPool;
     extern VkSurfaceKHR surface;
     
@@ -31,7 +31,8 @@ namespace VulkanContext
 	extern PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
 	extern PFN_vkCreateRayTracingPipelinesKHR vkCreateRayTracingPipelinesKHR;
 	extern PFN_vkCmdTraceRaysKHR vkCmdTraceRaysKHR;
- 
+
+    extern VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtProperties;
     
     extern const std::vector<const char*> validationLayers;
     extern const std::vector<const char*> deviceExtensions;

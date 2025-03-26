@@ -53,41 +53,6 @@ VkShaderModule Shader::createShaderModule(VkDevice device, const std::vector<uin
 	return shaderModule;
 }
 
-VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT* pCreateInfo, const VkAllocationCallbacks* pAllocator, VkDebugUtilsMessengerEXT* pDebugMessenger)
-{
-	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
-	if (func != nullptr)
-	{
-		return func(instance, pCreateInfo, pAllocator, pDebugMessenger);
-	}
-	else
-	{
-		return VK_ERROR_EXTENSION_NOT_PRESENT;
-	}
-}
-
-void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT debugMessenger, const VkAllocationCallbacks* pAllocator)
-{
-	auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
-	if (func != nullptr)
-	{
-		func(instance, debugMessenger, pAllocator);
-	}
-}
-
-PFN_vkQueueSubmit2KHR VoxelEngine::vkQueueSubmit2KHR = nullptr;
-PFN_vkGetAccelerationStructureBuildSizesKHR VoxelEngine::vkGetAccelerationStructureBuildSizesKHR = nullptr;
-PFN_vkCreateAccelerationStructureKHR VoxelEngine::vkCreateAccelerationStructureKHR = nullptr;
-PFN_vkGetAccelerationStructureDeviceAddressKHR VoxelEngine::vkGetAccelerationStructureDeviceAddressKHR = nullptr;
-PFN_vkCmdBuildAccelerationStructuresKHR VoxelEngine::vkCmdBuildAccelerationStructuresKHR = nullptr;
-PFN_vkBuildAccelerationStructuresKHR VoxelEngine::vkBuildAccelerationStructuresKHR = nullptr;
-PFN_vkDestroyAccelerationStructureKHR VoxelEngine::vkDestroyAccelerationStructureKHR = nullptr;
-PFN_vkGetRayTracingShaderGroupHandlesKHR VoxelEngine::vkGetRayTracingShaderGroupHandlesKHR = nullptr;
-PFN_vkGetBufferDeviceAddressKHR VoxelEngine::vkGetBufferDeviceAddressKHR = nullptr;
-PFN_vkCreateRayTracingPipelinesKHR VoxelEngine::vkCreateRayTracingPipelinesKHR = nullptr;
-PFN_vkCmdTraceRaysKHR VoxelEngine::vkCmdTraceRaysKHR = nullptr;
-
-
 void VoxelEngine::mouseCallback(GLFWwindow* window, double xpos, double ypos)
 {
     VoxelEngine* app = static_cast<VoxelEngine*>(glfwGetWindowUserPointer(window));
@@ -127,246 +92,7 @@ void VoxelEngine::initWindow()
 	glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
 }
 
- std::vector<const char*> VoxelEngine::getRequiredExtensions()
-{
-	uint32_t glfwExtensionCount = 0;
-	const char** glfwExtensions;
-	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-	std::vector<const char*> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-	if (enableValidationLayers)
-	{
-		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-	}
-
-	extensions.push_back(VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME);
-
-	return extensions;
-}
-
- bool VoxelEngine::checkValidationLayerSupport()
-{
-	uint32_t layerCount;
-	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
-	std::vector<VkLayerProperties> availableLayers(layerCount);
-	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-
-	for (const char* layerName : validationLayers)
-	{
-		bool layerFound = false;
-
-		for (const auto& layerProperties : availableLayers)
-		{
-			if (strcmp(layerName, layerProperties.layerName) == 0)
-			{
-				layerFound = true;
-				break;
-			}
-		}
-
-		if (!layerFound)
-		{
-			return false;
-		}
-	}
-
-	return true;
-}
-
-void VoxelEngine::populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT& createInfo)
-{
-	createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
-	createInfo.messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-	createInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT;
-	createInfo.pfnUserCallback = debugCallback;
-}
-
-void VoxelEngine::setupDebugMessenger()
-{
-	if (!enableValidationLayers) return;
-
-	VkDebugUtilsMessengerCreateInfoEXT createInfo;
-	populateDebugMessengerCreateInfo(createInfo);
-
-	if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
-	{
-		LOG_ERROR("failed to set up debug messenger!");
-	}
-}
-
-void VoxelEngine::createInstance()
-{
-	if (enableValidationLayers && !checkValidationLayerSupport())
-	{
-		LOG_ERROR("validation layers requested, but not available!");
-	}
-
-	VkApplicationInfo appInfo{};
-	appInfo.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO;
-	appInfo.pApplicationName = windowName.c_str();
-	appInfo.applicationVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.pEngineName = "No Engine";
-	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
-	appInfo.apiVersion = VK_API_VERSION_1_0;
-
-	VkInstanceCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-	createInfo.pApplicationInfo = &appInfo;
-
-	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-	if (enableValidationLayers)
-	{
-		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-		createInfo.ppEnabledLayerNames = validationLayers.data();
-
-		populateDebugMessengerCreateInfo(debugCreateInfo);
-		debugCreateInfo.messageSeverity = 
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-		createInfo.pNext = (VkDebugUtilsMessengerCreateInfoEXT*)&debugCreateInfo;
-	}
-	else
-	{
-		createInfo.enabledLayerCount = 0;
-		createInfo.pNext = nullptr;
-	}
-
-	auto extensions = getRequiredExtensions();
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-	createInfo.ppEnabledExtensionNames = extensions.data();
-
-	if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
-	{
-		LOG_ERROR("failed to create instance!");
-	}
-}
-
- QueueFamilyIndices VoxelEngine::findQueueFamilies(VkPhysicalDevice device)
-{
-	QueueFamilyIndices indices;
-
-	uint32_t queueFamilyCount = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, nullptr);
-
-	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-	vkGetPhysicalDeviceQueueFamilyProperties(device, &queueFamilyCount, queueFamilies.data());
-
-	int i = 0;
-	for (const auto& queueFamily : queueFamilies)
-	{
-		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT)
-		{
-			indices.graphicsFamily = i;
-		}
-
-		VkBool32 presentSupport = false;
-		vkGetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &presentSupport);
-
-		if (presentSupport)
-		{
-			indices.presentFamily = i;
-		}
-
-		if (indices.isComplete())
-		{
-			break;
-		}
-
-		i++;
-	}
-
-	return indices;
-}
-
- bool VoxelEngine::checkDeviceExtensionSupport(VkPhysicalDevice device)
-{
-	uint32_t extensionCount;
-	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, nullptr);
-
-	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-	vkEnumerateDeviceExtensionProperties(device, nullptr, &extensionCount, availableExtensions.data());
-
-	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-
-	for (const auto& extension : availableExtensions)
-	{
-		requiredExtensions.erase(extension.extensionName);
-	}
-
-	return requiredExtensions.empty();
-}
-
- SwapChainSupportDetails VoxelEngine::querySwapChainSupport(VkPhysicalDevice device)
-{
-	SwapChainSupportDetails details;
-
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &details.capabilities);
-
-	uint32_t formatCount;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, nullptr);
-	if (formatCount != 0)
-	{
-		details.formats.resize(formatCount);
-		vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &formatCount, details.formats.data());
-	}
-
-
-	uint32_t presentModeCount;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, nullptr);
-	if (presentModeCount != 0)
-	{
-		details.presentModes.resize(presentModeCount);
-		vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &presentModeCount, details.presentModes.data());
-	}
-
-	return details;
-}
-
-bool VoxelEngine::isDeviceSuitable(VkPhysicalDevice device)
-{
-	VkPhysicalDeviceProperties deviceProperties;
-	VkPhysicalDeviceFeatures deviceFeatures;
-	vkGetPhysicalDeviceProperties(device, &deviceProperties);
-	vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
-
-	QueueFamilyIndices indices = findQueueFamilies(device);
-
-	bool extensionsSupported = checkDeviceExtensionSupport(device);
-
-	bool swapChainAdequate = false;
-	if (extensionsSupported)
-	{
-		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(device);
-		swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-	}
-
-	// Setup feature chain for device suitability check
-	VulkanFeatureChain queryChain;
-	
-	// Add all required features to the chain with the simplified method
-	auto sync2Features = queryChain.enableFeature<VkPhysicalDeviceSynchronization2FeaturesKHR>(&VkPhysicalDeviceSynchronization2FeaturesKHR::synchronization2);
-	auto bufferDeviceAddressFeatures = queryChain.enableFeature<VkPhysicalDeviceBufferDeviceAddressFeatures>(&VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress);
-	auto accStructFeatures = queryChain.enableFeature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(&VkPhysicalDeviceAccelerationStructureFeaturesKHR::accelerationStructure);
-	auto rtPipelineFeatures = queryChain.enableFeature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(&VkPhysicalDeviceRayTracingPipelineFeaturesKHR::rayTracingPipeline);
-	
-	// Query all features at once
-	queryChain.queryFeatures(device);
-
-	bool hasRequiredDeviceFeatures =
-		deviceFeatures.geometryShader &&
-		bufferDeviceAddressFeatures->bufferDeviceAddress &&
-		accStructFeatures->accelerationStructure &&
-		rtPipelineFeatures->rayTracingPipeline &&
-		sync2Features->synchronization2;
-
-	return deviceProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU && hasRequiredDeviceFeatures && indices.isComplete() && extensionsSupported && swapChainAdequate;
-}
-
- VkSurfaceFormatKHR VoxelEngine::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
+VkSurfaceFormatKHR VoxelEngine::chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR>& availableFormats)
 {
 	for (const auto& availableFormat : availableFormats)
 	{
@@ -379,7 +105,7 @@ bool VoxelEngine::isDeviceSuitable(VkPhysicalDevice device)
 	return availableFormats[0];
 }
 
- VkPresentModeKHR VoxelEngine::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
+VkPresentModeKHR VoxelEngine::chooseSwapPresentMode(const std::vector<VkPresentModeKHR>& availablePresentModes)
 {
 	for (const auto& availablePresentMode : availablePresentModes) {
 		if (availablePresentMode == VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -390,7 +116,7 @@ bool VoxelEngine::isDeviceSuitable(VkPhysicalDevice device)
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
- VkExtent2D VoxelEngine::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
+VkExtent2D VoxelEngine::chooseSwapExtent(const VkSurfaceCapabilitiesKHR& capabilities)
 {
 	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max())
 	{
@@ -413,163 +139,9 @@ bool VoxelEngine::isDeviceSuitable(VkPhysicalDevice device)
 	}
 }
 
-void VoxelEngine::pickPhysicalDevice()
-{
-	uint32_t deviceCount = 0;
-	vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr);
-
-	if (deviceCount == 0)
-	{
-		LOG_ERROR("failed to find GPUs with Vulkan support!");
-	}
-
-
-	std::vector<VkPhysicalDevice> devices(deviceCount);
-	vkEnumeratePhysicalDevices(instance, &deviceCount, devices.data());
-
-	for (const auto& device : devices)
-	{
-		if (isDeviceSuitable(device))
-		{
-			physicalDevice = device;
-			break;
-		}
-	}
-
-	if (physicalDevice == VK_NULL_HANDLE)
-	{
-		LOG_ERROR("failed to find a suitable GPU!");
-	}
-	
-	VkPhysicalDeviceProperties2 prop2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
-	prop2.pNext = &rtProperties;
-	vkGetPhysicalDeviceProperties2(physicalDevice, &prop2);
-
-}
-
-
-void VoxelEngine::createLogicalDevice()
-{
-	QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
-
-	std::vector<VkDeviceQueueCreateInfo> queueCreateInfos;
-	std::set<uint32_t> uniqueQueueFamilies = { indices.graphicsFamily.value(), indices.presentFamily.value() };
-
-	float queuePriority = 1.0f;
-
-	for (uint32_t queueFamily : uniqueQueueFamilies)
-	{
-		VkDeviceQueueCreateInfo queueCreateInfo{};
-		queueCreateInfo.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO;
-		queueCreateInfo.queueFamilyIndex = queueFamily;
-		queueCreateInfo.queueCount = 1;
-		queueCreateInfo.pQueuePriorities = &queuePriority;
-		queueCreateInfos.push_back(queueCreateInfo);
-	}
-
-	auto rtPipelineFeatures = featureChain.enableFeature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(&VkPhysicalDeviceRayTracingPipelineFeaturesKHR::rayTracingPipeline);
-	
-	accelerationStructureFeatures = featureChain.enableFeature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(&VkPhysicalDeviceAccelerationStructureFeaturesKHR::accelerationStructure);
-	
-	auto bufferDeviceAddressFeatures = featureChain.enableFeature<VkPhysicalDeviceBufferDeviceAddressFeatures>(&VkPhysicalDeviceBufferDeviceAddressFeatures::bufferDeviceAddress);
-	
-	auto sync2Features = featureChain.enableFeature<VkPhysicalDeviceSynchronization2FeaturesKHR>(&VkPhysicalDeviceSynchronization2FeaturesKHR::synchronization2);
-	
-	auto deviceExtensionFeatures = featureChain.addFeature<VkPhysicalDeviceFeatures2>();
-
-    VkDeviceCreateInfo createInfo{};
-    createInfo.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO;
-	createInfo.pNext = featureChain.getChainHead();
-    createInfo.pQueueCreateInfos = queueCreateInfos.data();
-    createInfo.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-    createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
-    createInfo.ppEnabledExtensionNames = deviceExtensions.data();
-
-	if (enableValidationLayers)
-	{
-		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
-		createInfo.ppEnabledLayerNames = validationLayers.data();
-	}
-	else
-	{
-		createInfo.enabledLayerCount = 0;
-	}
-	
-	if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
-	{
-		LOG_ERROR("failed to create logical device!");
-	}
-
-	vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
-	vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
-
-	vkQueueSubmit2KHR = 
-		reinterpret_cast<PFN_vkQueueSubmit2KHR>(
-			vkGetDeviceProcAddr(device, "vkQueueSubmit2KHR")
-		);
-
-	vkGetAccelerationStructureBuildSizesKHR = 
-		reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
-			vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR")
-		);
-
-	vkCreateAccelerationStructureKHR = 
-		reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(
-			vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR")
-		);
-
-	vkGetAccelerationStructureDeviceAddressKHR = 
-		reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
-			vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR")
-		);
-
-	vkCmdBuildAccelerationStructuresKHR = 
-		reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
-			vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR")
-		);
-
-	vkBuildAccelerationStructuresKHR = 
-		reinterpret_cast<PFN_vkBuildAccelerationStructuresKHR>(
-			vkGetDeviceProcAddr(device, "vkBuildAccelerationStructuresKHR")
-		);
-
-	vkDestroyAccelerationStructureKHR = 
-		reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
-			vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR")
-		);
-
-	vkGetRayTracingShaderGroupHandlesKHR = 
-		reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(
-			vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR")
-		);
-
-	vkGetBufferDeviceAddressKHR = 
-		reinterpret_cast<PFN_vkGetBufferDeviceAddressKHR>(
-			vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR")
-		);
-
-	vkCreateRayTracingPipelinesKHR = 
-		reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(
-			vkGetDeviceProcAddr(device, "vkCreateRayTracingPipelinesKHR")
-		);
-
-	vkCmdTraceRaysKHR =
-		reinterpret_cast<PFN_vkCmdTraceRaysKHR>(
-			vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR")
-		);
-}
-
-void VoxelEngine::createSurface()
-{
-	if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
-	{
-		LOG_ERROR("failed to create window surface!");
-	}
-}
-
 void VoxelEngine::createSwapChain()
 {
-	SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice);
+	VulkanContext::SwapChainSupportDetails swapChainSupport = VulkanContext::QuerySwapChainSupport(VulkanContext::physicalDevice);
 
 	VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
 	VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
@@ -583,7 +155,7 @@ void VoxelEngine::createSwapChain()
 
 	VkSwapchainCreateInfoKHR createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-	createInfo.surface = surface;
+	createInfo.surface = VulkanContext::surface;
 
 	createInfo.minImageCount = imageCount;
 	createInfo.imageFormat = surfaceFormat.format;
@@ -592,7 +164,7 @@ void VoxelEngine::createSwapChain()
 	createInfo.imageArrayLayers = 1;
 	createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-	QueueFamilyIndices indices = findQueueFamilies(physicalDevice);
+	VulkanContext::QueueFamilyIndices indices = VulkanContext::FindQueueFamilies(VulkanContext::physicalDevice);
 	uint32_t queueFamilyIndices[] = { indices.graphicsFamily.value(), indices.presentFamily.value() };
 
 	if (indices.graphicsFamily != indices.presentFamily)
@@ -616,14 +188,14 @@ void VoxelEngine::createSwapChain()
 
 	createInfo.oldSwapchain = VK_NULL_HANDLE;
 
-	if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS)
+	if (vkCreateSwapchainKHR(VulkanContext::device, &createInfo, nullptr, &swapChain) != VK_SUCCESS)
 	{
 		LOG_ERROR("failed to create swap chain!");
 	}
 
-	vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr); // we specify the minimum number of images but the implementation can create more, thus here we check the actual image count
+	vkGetSwapchainImagesKHR(VulkanContext::device, swapChain, &imageCount, nullptr); // we specify the minimum number of images but the implementation can create more, thus here we check the actual image count
 	swapChainImages.resize(imageCount); // Resize to match correct image count
-	vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data()); // now we can specify the data as the vector is the correct size
+	vkGetSwapchainImagesKHR(VulkanContext::device, swapChain, &imageCount, swapChainImages.data()); // now we can specify the data as the vector is the correct size
 
 	swapChainImageFormat = surfaceFormat.format;
 	swapChainExtent = extent;
@@ -654,29 +226,13 @@ void VoxelEngine::createImageViews()
 		createInfo.subresourceRange.baseArrayLayer = 0;
 		createInfo.subresourceRange.layerCount = 1;
 
-		if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS)
+		if (vkCreateImageView(VulkanContext::device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS)
 		{
 			LOG_ERROR("failed to create image views!");
 		}
 	}
 }
 
-
-
-void VoxelEngine::createCommandPool()
-{
-	QueueFamilyIndices queueFamilyIndices = findQueueFamilies(physicalDevice);
-
-	VkCommandPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
-	poolInfo.flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT;
-	poolInfo.queueFamilyIndex = queueFamilyIndices.graphicsFamily.value();
-
-	if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
-	{
-		LOG_ERROR("failed to create command pool!");
-	}
-}
 
 VkCommandBuffer VoxelEngine::createCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level, bool singleUse)
 {
@@ -722,7 +278,7 @@ void VoxelEngine::flushCommandBuffer(VkDevice device, VkCommandBuffer commandBuf
     finalSubmit.pCommandBufferInfos = &submitInfo;
     
     vkEndCommandBuffer(commandBuffer);
-    vkQueueSubmit2KHR(queue, 1, &finalSubmit, fence);
+    VulkanContext::vkQueueSubmit2KHR(queue, 1, &finalSubmit, fence);
 
     vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
     vkDestroyFence(device, fence, nullptr);
@@ -741,11 +297,11 @@ void VoxelEngine::createCommandBuffers()
 	VkCommandBufferAllocateInfo allocInfo{};
 
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-	allocInfo.commandPool = commandPool;
+	allocInfo.commandPool = VulkanContext::commandPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 	allocInfo.commandBufferCount = static_cast<uint32_t>(commandBuffers.size());
 
-	if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
+	if (vkAllocateCommandBuffers(VulkanContext::device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
 	{
 		LOG_ERROR("failed to allocate command buffers!");
 	}
@@ -753,24 +309,13 @@ void VoxelEngine::createCommandBuffers()
 }
 
 
-void VoxelEngine::initVMA()
-{
-	VmaAllocatorCreateInfo allocatorInfo = {};
-	allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2;
-	allocatorInfo.physicalDevice = physicalDevice;
-	allocatorInfo.device = device;
-	allocatorInfo.instance = instance;
-	allocatorInfo.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT; 
-	vmaCreateAllocator(&allocatorInfo, &vmaAllocator);
-}
-
 uint64_t VoxelEngine::getBufferDeviceAddress(VkBuffer buffer)
 {
 	VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
 	bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
 	bufferDeviceAddressInfo.buffer = buffer;
 	
-	return vkGetBufferDeviceAddressKHR(device, &bufferDeviceAddressInfo);
+	return VulkanContext::vkGetBufferDeviceAddressKHR(VulkanContext::device, &bufferDeviceAddressInfo);
 }
 
 void VoxelEngine::createStorageImages()
@@ -784,11 +329,11 @@ void VoxelEngine::createStorageImages()
         extent.height = swapChainExtent.height;
 
 		
-        debugImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
-		outputImage.create(vmaAllocator, device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+        debugImage.create(VulkanContext::vmaAllocator, VulkanContext::device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
+		outputImage.create(VulkanContext::vmaAllocator, VulkanContext::device, extent, VK_FORMAT_R32G32B32A32_SFLOAT, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_STORAGE_BIT);
 
         // Transition layout from UNDEFINED to GENERAL
-        VkCommandBuffer cmd = createCommandBuffer(device, commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+        VkCommandBuffer cmd = createCommandBuffer(VulkanContext::device, VulkanContext::commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
         
         VkImageMemoryBarrier barrier{};
         barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
@@ -827,7 +372,7 @@ void VoxelEngine::createStorageImages()
 			1, &barrier
 		);
 
-        flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
+        flushCommandBuffer(VulkanContext::device, cmd, VulkanContext::graphicsQueue, VulkanContext::commandPool, true);
 }
 
 void VoxelEngine::createBLAS()
@@ -856,13 +401,13 @@ void VoxelEngine::createBLAS()
 
     Buffer<BufferType::HostVisible> aabbBuffer;
     aabbBuffer.create(
-        vmaAllocator, 
-        device, 
+        VulkanContext::vmaAllocator, 
+        VulkanContext::device, 
         aabbBufferSize, 
         bufferUsageFlags, 
-        VoxelEngine::vkGetBufferDeviceAddressKHR
+        VulkanContext::vkGetBufferDeviceAddressKHR
     );
-    aabbBuffer.updateData(vmaAllocator, aabbs.data(), aabbBufferSize);
+    aabbBuffer.updateData(VulkanContext::vmaAllocator, aabbs.data(), aabbBufferSize);
 
     VkDeviceOrHostAddressConstKHR aabbDataDeviceAddress{};
     aabbDataDeviceAddress.deviceAddress = aabbBuffer.deviceAddress;
@@ -892,8 +437,8 @@ void VoxelEngine::createBLAS()
     VkAccelerationStructureBuildSizesInfoKHR accelerationStructureBuildSizesInfo{};
     accelerationStructureBuildSizesInfo.sType = 
         VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-    vkGetAccelerationStructureBuildSizesKHR(
-        device,
+    VulkanContext::vkGetAccelerationStructureBuildSizesKHR(
+        VulkanContext::device,
         VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
         &accelerationStructureBuildGeometryInfo,
         &primitiveCount,
@@ -901,12 +446,12 @@ void VoxelEngine::createBLAS()
 
     Buffer<BufferType::DeviceLocal> accelerationStorage;
     accelerationStorage.create(
-        vmaAllocator,
-        device,
+        VulkanContext::vmaAllocator,
+        VulkanContext::device,
         accelerationStructureBuildSizesInfo.accelerationStructureSize,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		VoxelEngine::vkGetBufferDeviceAddressKHR
+		VulkanContext::vkGetBufferDeviceAddressKHR
 	);
 
     VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
@@ -919,14 +464,14 @@ void VoxelEngine::createBLAS()
         VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
     
     VkAccelerationStructureKHR blasHandle;
-    vkCreateAccelerationStructureKHR(
-        device,
+    VulkanContext::vkCreateAccelerationStructureKHR(
+        VulkanContext::device,
         &accelerationStructureCreateInfo,
         nullptr,
         &blasHandle);
 
     ScratchBuffer scratchBuffer;
-    scratchBuffer.createScratchBuffer(vmaAllocator, device, accelerationStructureBuildSizesInfo.buildScratchSize, VoxelEngine::vkGetBufferDeviceAddressKHR);
+    scratchBuffer.createScratchBuffer(VulkanContext::vmaAllocator, VulkanContext::device, accelerationStructureBuildSizesInfo.buildScratchSize, VulkanContext::vkGetBufferDeviceAddressKHR);
 
     VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
     buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -945,13 +490,13 @@ void VoxelEngine::createBLAS()
 
     std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRangeInfos = {&buildRangeInfo};
 
-    VkCommandBuffer cmd = createCommandBuffer(device, commandPool, 
+    VkCommandBuffer cmd = createCommandBuffer(VulkanContext::device, VulkanContext::commandPool, 
         VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-    vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRangeInfos.data());
-    flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
+    VulkanContext::vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRangeInfos.data());
+    flushCommandBuffer(VulkanContext::device, cmd, VulkanContext::graphicsQueue, VulkanContext::commandPool, true);
 
-    scratchBuffer.destroyScratchBuffer(vmaAllocator);
-    aabbBuffer.destroy(vmaAllocator);
+    scratchBuffer.destroyScratchBuffer(VulkanContext::vmaAllocator);
+    aabbBuffer.destroy(VulkanContext::vmaAllocator);
 
     bottomLevelAccelerationStructure.handle = blasHandle;
     bottomLevelAccelerationStructure.buffer = std::move(accelerationStorage);
@@ -960,7 +505,7 @@ void VoxelEngine::createBLAS()
     addressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
     addressInfo.accelerationStructure = blasHandle;
     bottomLevelAccelerationStructure.deviceAddress = 
-        vkGetAccelerationStructureDeviceAddressKHR(device, &addressInfo);
+        VulkanContext::vkGetAccelerationStructureDeviceAddressKHR(VulkanContext::device, &addressInfo);
 }
 
 
@@ -985,14 +530,14 @@ void VoxelEngine::createTLAS()
     Buffer<BufferType::HostVisible> instancesBuffer;
     const VkDeviceSize instanceBufferSize = sizeof(instance);
     instancesBuffer.create(
-        vmaAllocator, 
-        device, 
+        VulkanContext::vmaAllocator, 
+        VulkanContext::device, 
         instanceBufferSize,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		VoxelEngine::vkGetBufferDeviceAddressKHR
+		VulkanContext::vkGetBufferDeviceAddressKHR
     );
-    instancesBuffer.updateData(vmaAllocator, &instance, instanceBufferSize);
+    instancesBuffer.updateData(VulkanContext::vmaAllocator, &instance, instanceBufferSize);
 
     // Get device address of instance buffer
     VkDeviceOrHostAddressConstKHR instanceDataAddress{};
@@ -1018,8 +563,8 @@ void VoxelEngine::createTLAS()
     const uint32_t primitiveCount = 1;
     VkAccelerationStructureBuildSizesInfoKHR sizeInfo{};
     sizeInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_SIZES_INFO_KHR;
-    vkGetAccelerationStructureBuildSizesKHR(
-        device,
+    VulkanContext::vkGetAccelerationStructureBuildSizesKHR(
+        VulkanContext::device,
         VK_ACCELERATION_STRUCTURE_BUILD_TYPE_DEVICE_KHR,
         &buildInfo,
         &primitiveCount,
@@ -1028,12 +573,12 @@ void VoxelEngine::createTLAS()
     // Create TLAS buffer
 	Buffer<BufferType::DeviceLocal> accelerationStorage;
 	accelerationStorage.create(
-		vmaAllocator,
-		device,
+		VulkanContext::vmaAllocator,
+		VulkanContext::device,
 		sizeInfo.accelerationStructureSize,
 		VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		VoxelEngine::vkGetBufferDeviceAddressKHR
+		VulkanContext::vkGetBufferDeviceAddressKHR
 	);
 	
 	topLevelAccelerationStructure.buffer = std::move(accelerationStorage);
@@ -1047,12 +592,12 @@ void VoxelEngine::createTLAS()
 
 
     VkAccelerationStructureKHR tlasHandle;
-    VK_ERROR_CHECK(vkCreateAccelerationStructureKHR(device, &createInfo, nullptr, &tlasHandle));
+    VK_ERROR_CHECK(VulkanContext::vkCreateAccelerationStructureKHR(VulkanContext::device, &createInfo, nullptr, &tlasHandle));
 
 
     // Create scratch buffer
     ScratchBuffer scratchBuffer;
-    scratchBuffer.createScratchBuffer(vmaAllocator, device, sizeInfo.buildScratchSize, VoxelEngine::vkGetBufferDeviceAddressKHR);
+    scratchBuffer.createScratchBuffer(VulkanContext::vmaAllocator, VulkanContext::device, sizeInfo.buildScratchSize, VulkanContext::vkGetBufferDeviceAddressKHR);
 
     // Build TLAS
     buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
@@ -1063,13 +608,13 @@ void VoxelEngine::createTLAS()
     buildRange.primitiveCount = primitiveCount;
     std::vector<VkAccelerationStructureBuildRangeInfoKHR*> buildRanges = {&buildRange};
 
-    VkCommandBuffer cmd = createCommandBuffer(device, commandPool, 
+    VkCommandBuffer cmd = createCommandBuffer(VulkanContext::device, VulkanContext::commandPool, 
         VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
-    vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRanges.data());
-    flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
+    VulkanContext::vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRanges.data());
+    flushCommandBuffer(VulkanContext::device, cmd, VulkanContext::graphicsQueue, VulkanContext::commandPool, true);
 
-    scratchBuffer.destroyScratchBuffer(vmaAllocator);
-    instancesBuffer.destroy(vmaAllocator);
+    scratchBuffer.destroyScratchBuffer(VulkanContext::vmaAllocator);
+    instancesBuffer.destroy(VulkanContext::vmaAllocator);
 
     // Store results
     topLevelAccelerationStructure.handle = tlasHandle;
@@ -1079,7 +624,7 @@ void VoxelEngine::createTLAS()
     addressInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR;
     addressInfo.accelerationStructure = tlasHandle;
     topLevelAccelerationStructure.deviceAddress = 
-        vkGetAccelerationStructureDeviceAddressKHR(device, &addressInfo);
+        VulkanContext::vkGetAccelerationStructureDeviceAddressKHR(VulkanContext::device, &addressInfo);
 
 	
 }
@@ -1087,34 +632,34 @@ void VoxelEngine::createTLAS()
 void VoxelEngine::deleteAS(AccelerationStructure& accelerationStructure)
 {
 	if (accelerationStructure.handle != VK_NULL_HANDLE) {
-        vkDestroyAccelerationStructureKHR(device, accelerationStructure.handle, nullptr);
+        VulkanContext::vkDestroyAccelerationStructureKHR(VulkanContext::device, accelerationStructure.handle, nullptr);
         accelerationStructure.handle = VK_NULL_HANDLE;
     }
-    accelerationStructure.buffer.destroy(vmaAllocator);
+    accelerationStructure.buffer.destroy(VulkanContext::vmaAllocator);
 }
 
 void VoxelEngine::createShaderBindingTables()
 {
-    const uint32_t handleSize = rtProperties.shaderGroupHandleSize;
-    const uint32_t handleSizeAligned = alignedSize(rtProperties.shaderGroupHandleSize, 
-                                             rtProperties.shaderGroupBaseAlignment);
+    const uint32_t handleSize = VulkanContext::rtProperties.shaderGroupHandleSize;
+    const uint32_t handleSizeAligned = alignedSize(VulkanContext::rtProperties.shaderGroupHandleSize, 
+                                             VulkanContext::rtProperties.shaderGroupBaseAlignment);
     const uint32_t groupCount = static_cast<uint32_t>(shaderGroups.size());
     
     VkDeviceSize sbtSize = groupCount * handleSizeAligned;
     
-    raygenShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
+    raygenShaderBindingTable.create(VulkanContext::vmaAllocator, VulkanContext::device, handleSizeAligned, 
         VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | 
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         ManagedBuffer::BufferType::DeviceLocal);
         
-    missShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
+    missShaderBindingTable.create(VulkanContext::vmaAllocator, VulkanContext::device, handleSizeAligned,
         VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | 
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         ManagedBuffer::BufferType::DeviceLocal);
         
-    closestHitShaderBindingTable.create(vmaAllocator, device, handleSizeAligned, 
+    closestHitShaderBindingTable.create(VulkanContext::vmaAllocator, VulkanContext::device, handleSizeAligned, 
         VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR | 
         VK_BUFFER_USAGE_TRANSFER_DST_BIT | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
@@ -1122,25 +667,25 @@ void VoxelEngine::createShaderBindingTables()
 
     // Get shader handles
     std::vector<uint8_t> shaderHandleStorage(groupCount * handleSize);
-    vkGetRayTracingShaderGroupHandlesKHR(
-        device, rtPipeline, 0, groupCount, groupCount * handleSize, shaderHandleStorage.data()
+    VulkanContext::vkGetRayTracingShaderGroupHandlesKHR(
+        VulkanContext::device, rtPipeline, 0, groupCount, groupCount * handleSize, shaderHandleStorage.data()
     );
     
     ManagedBuffer stagingBuffer;
-    stagingBuffer.create(vmaAllocator, device, sbtSize,
+    stagingBuffer.create(VulkanContext::vmaAllocator, VulkanContext::device, sbtSize,
         VK_BUFFER_USAGE_TRANSFER_SRC_BIT,
         ManagedBuffer::BufferType::HostVisible);
     
     uint8_t* data = nullptr;
-    vmaMapMemory(vmaAllocator, stagingBuffer.allocation, (void**)&data);
+    vmaMapMemory(VulkanContext::vmaAllocator, stagingBuffer.allocation, (void**)&data);
     
     for (uint32_t i = 0; i < groupCount; i++) {
         memcpy(data + i * handleSizeAligned, shaderHandleStorage.data() + i * handleSize, handleSize);
     }
     
-    vmaUnmapMemory(vmaAllocator, stagingBuffer.allocation);
+    vmaUnmapMemory(VulkanContext::vmaAllocator, stagingBuffer.allocation);
     
-    VkCommandBuffer cmd = createCommandBuffer(device, commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+    VkCommandBuffer cmd = createCommandBuffer(VulkanContext::device, VulkanContext::commandPool, VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
     
     VkBufferCopy copyRegion{};
     copyRegion.size = handleSizeAligned;
@@ -1157,8 +702,8 @@ void VoxelEngine::createShaderBindingTables()
     copyRegion.srcOffset = 2 * handleSizeAligned;
     vkCmdCopyBuffer(cmd, stagingBuffer.handle, closestHitShaderBindingTable.handle, 1, &copyRegion);
     
-    flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
-    stagingBuffer.destroy(vmaAllocator);
+    flushCommandBuffer(VulkanContext::device, cmd, VulkanContext::graphicsQueue, VulkanContext::commandPool, true);
+    stagingBuffer.destroy(VulkanContext::vmaAllocator);
     
     raygenShaderBindingTable.deviceAddress = getBufferDeviceAddress(raygenShaderBindingTable.handle);
     missShaderBindingTable.deviceAddress = getBufferDeviceAddress(missShaderBindingTable.handle);
@@ -1184,7 +729,7 @@ void VoxelEngine::createDescriptorSetsRT()
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT; 
 
-    VK_ERROR_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool));
+    VK_ERROR_CHECK(vkCreateDescriptorPool(VulkanContext::device, &poolInfo, nullptr, &descriptorPool));
 
     descriptorSetsRT.resize(MAX_FRAMES_IN_FLIGHT);
     
@@ -1196,7 +741,7 @@ void VoxelEngine::createDescriptorSetsRT()
     allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     allocInfo.pSetLayouts = layouts.data();
 
-    VK_ERROR_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()));
+    VK_ERROR_CHECK(vkAllocateDescriptorSets(VulkanContext::device, &allocInfo, descriptorSetsRT.data()));
 
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
 	{
@@ -1276,7 +821,7 @@ void VoxelEngine::updateDescriptorSetRT(uint32_t index)
     debugImageWrite.pImageInfo = &debugImageInfo;
     descriptorWrites.push_back(debugImageWrite);
 
-    vkUpdateDescriptorSets(device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+    vkUpdateDescriptorSets(VulkanContext::device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
 }
 
 void VoxelEngine::updateDescriptorSetsRT() 
@@ -1333,7 +878,7 @@ void VoxelEngine::createRayTracingPipeline()
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 	layoutInfo.pBindings    = bindings.data();
 
-	VK_ERROR_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayoutRT));
+	VK_ERROR_CHECK(vkCreateDescriptorSetLayout(VulkanContext::device, &layoutInfo, nullptr, &descriptorSetLayoutRT));
 
 	VkPushConstantRange pushConstantRange = {};
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR; // Include closest hit stage
@@ -1347,7 +892,7 @@ void VoxelEngine::createRayTracingPipeline()
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
-	VK_ERROR_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &rtPipelineLayout));
+	VK_ERROR_CHECK(vkCreatePipelineLayout(VulkanContext::device, &pipelineLayoutCreateInfo, nullptr, &rtPipelineLayout));
 
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
@@ -1361,10 +906,10 @@ void VoxelEngine::createRayTracingPipeline()
 	auto closestHitShaderSPIRV = Shader::compileGLSLToSPIRV(closestHitShaderGLSL, shaderc_closesthit_shader, "Closest Hit Shader");
     auto intersectionShaderSPIRV = Shader::compileGLSLToSPIRV(intersectionShaderGLSL, shaderc_intersection_shader, "Intersection Shader");
 
-	VkShaderModule raygenShaderModule = Shader::createShaderModule(device, raygenShaderSPIRV);
-	VkShaderModule missShaderModule = Shader::createShaderModule(device, missShaderSPIRV);
-	VkShaderModule closestHitShaderModule = Shader::createShaderModule(device, closestHitShaderSPIRV);
-    VkShaderModule intersectionShaderModule = Shader::createShaderModule(device, intersectionShaderSPIRV);
+	VkShaderModule raygenShaderModule = Shader::createShaderModule(VulkanContext::device, raygenShaderSPIRV);
+	VkShaderModule missShaderModule = Shader::createShaderModule(VulkanContext::device, missShaderSPIRV);
+	VkShaderModule closestHitShaderModule = Shader::createShaderModule(VulkanContext::device, closestHitShaderSPIRV);
+    VkShaderModule intersectionShaderModule = Shader::createShaderModule(VulkanContext::device, intersectionShaderSPIRV);
 
 	// Ray generation group
 	{
@@ -1445,12 +990,12 @@ void VoxelEngine::createRayTracingPipeline()
 	raytracingPipelineCreateInfo.maxPipelineRayRecursionDepth = 1;
 	raytracingPipelineCreateInfo.layout                       = rtPipelineLayout;
 
-	VK_ERROR_CHECK(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracingPipelineCreateInfo, nullptr, &rtPipeline));
+	VK_ERROR_CHECK(VulkanContext::vkCreateRayTracingPipelinesKHR(VulkanContext::device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracingPipelineCreateInfo, nullptr, &rtPipeline));
 	
-	vkDestroyShaderModule(device, raygenShaderModule, nullptr);
-	vkDestroyShaderModule(device, missShaderModule, nullptr);
-	vkDestroyShaderModule(device, closestHitShaderModule, nullptr);
-	vkDestroyShaderModule(device, intersectionShaderModule, nullptr);
+	vkDestroyShaderModule(VulkanContext::device, raygenShaderModule, nullptr);
+	vkDestroyShaderModule(VulkanContext::device, missShaderModule, nullptr);
+	vkDestroyShaderModule(VulkanContext::device, closestHitShaderModule, nullptr);
+	vkDestroyShaderModule(VulkanContext::device, intersectionShaderModule, nullptr);
 }
 
 void VoxelEngine::createUniformBuffers()
@@ -1465,8 +1010,8 @@ void VoxelEngine::createUniformBuffers()
 
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; ++i)
 	{
-		uniformBuffersRT[i].create(vmaAllocator, device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, ManagedBuffer::BufferType::HostVisible);
-		uniformBuffersRT[i].updateData(vmaAllocator, &uniformData, bufferSize);
+		uniformBuffersRT[i].create(VulkanContext::vmaAllocator, VulkanContext::device, bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT, ManagedBuffer::BufferType::HostVisible);
+		uniformBuffersRT[i].updateData(VulkanContext::vmaAllocator, &uniformData, bufferSize);
 	}
 }
 
@@ -1486,9 +1031,9 @@ void VoxelEngine::createSyncObjects()
 
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
 	{ 
-        if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
-            vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
-            vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) 
+        if (vkCreateSemaphore(VulkanContext::device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
+            vkCreateSemaphore(VulkanContext::device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
+            vkCreateFence(VulkanContext::device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) 
 		{
             LOG_ERROR("failed to create synchronization objects!");
         }
@@ -1499,12 +1044,12 @@ void VoxelEngine::createSphereBuffer()
 {
     VkDeviceSize bufferSize = sizeof(Sphere) * spheres.size();
     sphereBuffer.create(
-        vmaAllocator, device,
+        VulkanContext::vmaAllocator, VulkanContext::device,
         bufferSize,
         VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
         ManagedBuffer::BufferType::HostVisible
     );
-    sphereBuffer.updateData(vmaAllocator, spheres.data(), bufferSize);
+    sphereBuffer.updateData(VulkanContext::vmaAllocator, spheres.data(), bufferSize);
 }
 
 void VoxelEngine::recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)
@@ -1522,22 +1067,22 @@ void VoxelEngine::recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t im
     // Set up shader binding tables
     VkStridedDeviceAddressRegionKHR raygenRegion{};
     raygenRegion.deviceAddress = raygenShaderBindingTable.deviceAddress;
-    raygenRegion.stride = rtProperties.shaderGroupHandleSize;
-    raygenRegion.size = rtProperties.shaderGroupHandleSize;
+    raygenRegion.stride = VulkanContext::rtProperties.shaderGroupHandleSize;
+    raygenRegion.size = VulkanContext::rtProperties.shaderGroupHandleSize;
     
     VkStridedDeviceAddressRegionKHR missRegion{};
     missRegion.deviceAddress = missShaderBindingTable.deviceAddress;
-    missRegion.stride = rtProperties.shaderGroupHandleSize;
-    missRegion.size = rtProperties.shaderGroupHandleSize;
+    missRegion.stride = VulkanContext::rtProperties.shaderGroupHandleSize;
+    missRegion.size = VulkanContext::rtProperties.shaderGroupHandleSize;
     
     VkStridedDeviceAddressRegionKHR hitRegion{};
     hitRegion.deviceAddress = closestHitShaderBindingTable.deviceAddress;
-    hitRegion.stride = rtProperties.shaderGroupHandleSize;
-    hitRegion.size = rtProperties.shaderGroupHandleSize;
+    hitRegion.stride = VulkanContext::rtProperties.shaderGroupHandleSize;
+    hitRegion.size = VulkanContext::rtProperties.shaderGroupHandleSize;
     
     VkStridedDeviceAddressRegionKHR callableRegion{};
     
-    vkCmdTraceRaysKHR(
+    VulkanContext::vkCmdTraceRaysKHR(
         commandBuffer,
         &raygenRegion, 
         &missRegion, 
@@ -1683,9 +1228,9 @@ void VoxelEngine::updateUniformBuffersRT()
 		if (ubo.type == ManagedBuffer::BufferType::HostVisible)
 		{
 			void* mapped;
-			vmaMapMemory(vmaAllocator, ubo.allocation, &mapped);
+			vmaMapMemory(VulkanContext::vmaAllocator, ubo.allocation, &mapped);
 			memcpy(mapped, &uniformData, sizeof(UniformData));
-			vmaUnmapMemory(vmaAllocator, ubo.allocation);
+			vmaUnmapMemory(VulkanContext::vmaAllocator, ubo.allocation);
 		} 
 		else 
 		{
@@ -1755,11 +1300,11 @@ void VoxelEngine::recreateSwapChain()
         glfwWaitEvents();
     }
 
-    vkDeviceWaitIdle(device);  
+    vkDeviceWaitIdle(VulkanContext::device);  
 
 	if (!commandBuffers.empty()) 
 	{
-        vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+        vkFreeCommandBuffers(VulkanContext::device, VulkanContext::commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
     }
     createCommandBuffers();
 
@@ -1773,8 +1318,8 @@ void VoxelEngine::recreateSwapChain()
 	createSyncObjects();
     createCommandBuffers(); 
 
-	imguiHandler.destroyFramebuffers(device);
-    imguiHandler.createImguiFramebuffers(device, swapChainImageViews, swapChainExtent);
+	imguiHandler.destroyFramebuffers(VulkanContext::device);
+    imguiHandler.createImguiFramebuffers(VulkanContext::device, swapChainImageViews, swapChainExtent);
 
 	fpsCamera.setAspectRatio(static_cast<float>(swapChainExtent.width) / static_cast<float>(swapChainExtent.height));
     updateDescriptorSetsRT();
@@ -1785,7 +1330,7 @@ void VoxelEngine::recreateSwapChain()
 void VoxelEngine::drawFrameRT() 
 {
     // Wait for the previous frame to complete
-    vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
+    vkWaitForFences(VulkanContext::device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     
 	
     // Update uniform buffers for the current frame BEFORE recording commands
@@ -1794,7 +1339,7 @@ void VoxelEngine::drawFrameRT()
     // Acquire an image from the swap chain
     uint32_t imageIndex;
     VkResult result = vkAcquireNextImageKHR(
-        device, 
+        VulkanContext::device, 
         swapChain, 
         UINT64_MAX, 
         imageAvailableSemaphores[currentFrame], 
@@ -1813,13 +1358,13 @@ void VoxelEngine::drawFrameRT()
     
     // Check if a previous frame is using this image (i.e., there is its fence to wait on)
     if (imagesInFlight[imageIndex] != VK_NULL_HANDLE) {
-        vkWaitForFences(device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
+        vkWaitForFences(VulkanContext::device, 1, &imagesInFlight[imageIndex], VK_TRUE, UINT64_MAX);
     }
     // Mark the image as now being in use by this frame
     imagesInFlight[imageIndex] = inFlightFences[currentFrame];
     
     // Reset the fence for this frame
-    vkResetFences(device, 1, &inFlightFences[currentFrame]);
+    vkResetFences(VulkanContext::device, 1, &inFlightFences[currentFrame]);
     
     // Reset and begin recording the command buffer
     vkResetCommandBuffer(commandBuffers[currentFrame], 0);
@@ -1852,7 +1397,7 @@ void VoxelEngine::drawFrameRT()
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    VK_ERROR_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]));
+    VK_ERROR_CHECK(vkQueueSubmit(VulkanContext::graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]));
 
     
     // Present the image
@@ -1867,7 +1412,7 @@ void VoxelEngine::drawFrameRT()
     presentInfo.pSwapchains = swapChains;
     presentInfo.pImageIndices = &imageIndex;
     
-    result = vkQueuePresentKHR(presentQueue, &presentInfo);
+    result = vkQueuePresentKHR(VulkanContext::presentQueue, &presentInfo);
 
 
     if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
@@ -1884,9 +1429,9 @@ void VoxelEngine::drawFrameRT()
 void VoxelEngine::cleanupSyncObjects() 
 {
     for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-        vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-        vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-        vkDestroyFence(device, inFlightFences[i], nullptr);
+        vkDestroySemaphore(VulkanContext::device, imageAvailableSemaphores[i], nullptr);
+        vkDestroySemaphore(VulkanContext::device, renderFinishedSemaphores[i], nullptr);
+        vkDestroyFence(VulkanContext::device, inFlightFences[i], nullptr);
     }
 	
 	imageAvailableSemaphores.clear();
@@ -1898,31 +1443,13 @@ void VoxelEngine::cleanupSyncObjects()
 
 void VoxelEngine::cleanup()
 {
-
 	cleanupRayTracing();
-
 	cleanupSwapChain();
 	cleanupSyncObjects();
 	
+	if (descriptorPool != VK_NULL_HANDLE) vkDestroyDescriptorPool(VulkanContext::device, descriptorPool, nullptr);
 
-	vkDestroyCommandPool(device, commandPool, nullptr);
-
-
-	if (descriptorPool != VK_NULL_HANDLE) vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-
-	vmaDestroyAllocator(vmaAllocator);
-
-	if (enableValidationLayers)
-	{
-		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-	}
-
-
-	imguiHandler.destroy(device);
-
-	vkDestroyDevice(device, nullptr);
-	vkDestroySurfaceKHR(instance, surface, nullptr);
-	vkDestroyInstance(instance, nullptr);
+	imguiHandler.destroy(VulkanContext::device);
 
 	VulkanContext::Cleanup();
 
@@ -1934,14 +1461,14 @@ void VoxelEngine::cleanupSwapChain()
 {
 	for (size_t i = 0; i < swapChainImageViews.size(); ++i)
 	{
-		vkDestroyImageView(device, swapChainImageViews[i], nullptr);
+		vkDestroyImageView(VulkanContext::device, swapChainImageViews[i], nullptr);
 	}
 	swapChainImageViews.clear();
-	vkDestroySwapchainKHR(device, swapChain, nullptr);
+	vkDestroySwapchainKHR(VulkanContext::device, swapChain, nullptr);
 
 	if (!commandBuffers.empty()) 
 	{
-        vkFreeCommandBuffers(device, commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
+        vkFreeCommandBuffers(VulkanContext::device, VulkanContext::commandPool, static_cast<uint32_t>(commandBuffers.size()), commandBuffers.data());
         commandBuffers.clear();
     }
 }
@@ -1960,31 +1487,31 @@ void VoxelEngine::cleanupRayTracing()
 
 	if (rtPipeline != VK_NULL_HANDLE)
 	{
-		vkDestroyPipeline(device, rtPipeline, nullptr);
+		vkDestroyPipeline(VulkanContext::device, rtPipeline, nullptr);
 	}
 
 	if (rtPipelineLayout != VK_NULL_HANDLE)
 	{
-		vkDestroyPipelineLayout(device, rtPipelineLayout, nullptr);
+		vkDestroyPipelineLayout(VulkanContext::device, rtPipelineLayout, nullptr);
 	}
 
 	if (descriptorSetLayoutRT != VK_NULL_HANDLE)
 	{
-		vkDestroyDescriptorSetLayout(device, descriptorSetLayoutRT, nullptr);
+		vkDestroyDescriptorSetLayout(VulkanContext::device, descriptorSetLayoutRT, nullptr);
 	}
 	
 
-	raygenShaderBindingTable.destroy(vmaAllocator);
-	missShaderBindingTable.destroy(vmaAllocator);
-	closestHitShaderBindingTable.destroy(vmaAllocator);
+	raygenShaderBindingTable.destroy(VulkanContext::vmaAllocator);
+	missShaderBindingTable.destroy(VulkanContext::vmaAllocator);
+	closestHitShaderBindingTable.destroy(VulkanContext::vmaAllocator);
 
 	outputImage.destroy();
 	debugImage.destroy();
 
 	for (auto& ubo : uniformBuffersRT)
 	{
-		ubo.destroy(vmaAllocator);
+		ubo.destroy(VulkanContext::vmaAllocator);
 	}
 	
-	sphereBuffer.destroy(vmaAllocator);
+	sphereBuffer.destroy(VulkanContext::vmaAllocator);
 }

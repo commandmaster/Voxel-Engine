@@ -1,5 +1,6 @@
 #include "MemoryClasses.hpp"
 #include "VoxelEngine.hpp"
+#include "VulkanContext.hpp"
 
 
 
@@ -44,7 +45,7 @@ void ManagedBuffer::create(
     VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
     bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
     bufferDeviceAddressInfo.buffer = handle;
-    deviceAddress = VoxelEngine::vkGetBufferDeviceAddressKHR(device, &bufferDeviceAddressInfo);
+    deviceAddress = VulkanContext::vkGetBufferDeviceAddressKHR(device, &bufferDeviceAddressInfo);
 
     _isDestroyed = false;
 }
