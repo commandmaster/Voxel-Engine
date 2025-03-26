@@ -8,27 +8,23 @@
 #include <memory>
 #include <vector>
 #include <atomic>
+#include <mutex>
 #include <string>
 #include <iostream>
 
-inline std::string vkResultToString(VkResult result) 
+#include "DebugUtils.hpp"
+
+struct ScratchBuffer
 {
-    switch (result) {
-        case VK_SUCCESS: return "VK_SUCCESS";
-        case VK_ERROR_OUT_OF_HOST_MEMORY: return "VK_ERROR_OUT_OF_HOST_MEMORY";
-        case VK_ERROR_OUT_OF_DEVICE_MEMORY: return "VK_ERROR_OUT_OF_DEVICE_MEMORY";
-        case VK_ERROR_INITIALIZATION_FAILED: return "VK_ERROR_INITIALIZATION_FAILED";
-        case VK_ERROR_DEVICE_LOST: return "VK_ERROR_DEVICE_LOST";
-        case VK_ERROR_MEMORY_MAP_FAILED: return "VK_ERROR_MEMORY_MAP_FAILED";
-        case VK_ERROR_LAYER_NOT_PRESENT: return "VK_ERROR_LAYER_NOT_PRESENT";
-        case VK_ERROR_EXTENSION_NOT_PRESENT: return "VK_ERROR_EXTENSION_NOT_PRESENT";
-        case VK_ERROR_FEATURE_NOT_PRESENT: return "VK_ERROR_FEATURE_NOT_PRESENT";
-        case VK_ERROR_INCOMPATIBLE_DRIVER: return "VK_ERROR_INCOMPATIBLE_DRIVER";
-        case VK_ERROR_TOO_MANY_OBJECTS: return "VK_ERROR_TOO_MANY_OBJECTS";
-        case VK_ERROR_FORMAT_NOT_SUPPORTED: return "VK_ERROR_FORMAT_NOT_SUPPORTED";
-        default: return "UNKNOWN_ERROR";
-    }
-}
+    uint64_t deviceAddress = 0;
+    VkBuffer handle = VK_NULL_HANDLE;
+    VmaAllocation allocation;
+    PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
+
+    void createScratchBuffer(VmaAllocator allocator, VkDevice device, VkDeviceSize size, PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR);
+
+    void destroyScratchBuffer(VmaAllocator allocator);
+};
 
 enum class BufferType
 {
@@ -83,6 +79,8 @@ namespace BufferUtils
 
         VkFence acquireFence(VkDevice device)
         {
+            std::lock_guard<std::mutex> lock(_mutex);
+            
             if (_availableFences.empty())
             {
                 VkFenceCreateInfo fenceInfo{};
@@ -91,23 +89,22 @@ namespace BufferUtils
                 VkFence fence = VK_NULL_HANDLE;
                 if (vkCreateFence(device, &fenceInfo, nullptr, &fence) != VK_SUCCESS) 
                 {
-                    throw std::runtime_error("Failed to create fence for buffer operations");
+                    VK_ERROR_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &fence));
                 }
                 _allocatedFenceCount.fetch_add(1, std::memory_order_relaxed);
                 return fence;
             }
             
-            VkFence fence = VK_NULL_HANDLE;
-            {
-                fence = _availableFences.back();
-                _availableFences.pop_back();
-            }
+            VkFence fence = _availableFences.back();
+            _availableFences.pop_back();
             
             VkResult resetResult = vkResetFences(device, 1, &fence);
             if (resetResult != VK_SUCCESS) 
             {
                 vkDestroyFence(device, fence, nullptr);
+                #ifdef LOG_ERROR_MODE
                 throw std::runtime_error("Failed to reset fence for buffer operations");
+                #endif
             }
             
             return fence;
@@ -117,15 +114,18 @@ namespace BufferUtils
         {
             if (fence != VK_NULL_HANDLE) 
             {
+                std::lock_guard<std::mutex> lock(_mutex);
                 _availableFences.push_back(fence);
             }
         }
         
         void cleanup(VkDevice device)
         {
+            std::lock_guard<std::mutex> lock(_mutex);
+            
             if (_allocatedFenceCount.load(std::memory_order_relaxed) != _availableFences.size()) 
             {
-                throw std::runtime_error("Not all fences were released before cleanup!");
+                LOG_ERROR("Not all fences were released before cleanup!");
             }
 
             for (auto fence : _availableFences)
@@ -147,13 +147,14 @@ namespace BufferUtils
     private:
         std::vector<VkFence> _availableFences;
         std::atomic<size_t> _allocatedFenceCount{0};
+        std::mutex _mutex;
         
         FencePool() = default;
         ~FencePool() 
         {
             if (_allocatedFenceCount.load(std::memory_order_relaxed) > 0) 
             {
-                std::cerr << "Warning: Fence pool was not properly cleaned up" << std::endl;
+                LOG_ERROR("Warning: Fence pool was not properly cleaned up");
             }
         }
     };
@@ -167,14 +168,15 @@ public:
     VmaAllocation allocation = VK_NULL_HANDLE;
     VkDeviceSize size = 0;
     uint64_t deviceAddress = 0;
+    PFN_vkGetBufferDeviceAddressKHR vkGetBufferDeviceAddressKHR;
 
-    Buffer() : _isDestroyed(true), _mappedMemory(nullptr) {}
+    Buffer() : _isDestroyed(true), _mappedMemory(nullptr), vkGetBufferDeviceAddressKHR(nullptr) {}
 
     ~Buffer() noexcept
     {
         if (!_isDestroyed && handle != VK_NULL_HANDLE) 
         {
-            std::cerr << "Buffer not explicitly destroyed" << std::endl;
+            LOG_ERROR("Buffer not explicitly destroyed");
         }
     }
 
@@ -182,7 +184,8 @@ public:
         VmaAllocator allocator,
         VkDevice device,
         VkDeviceSize bufferSize,
-        VkBufferUsageFlags usage
+        VkBufferUsageFlags usage,
+        PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR
     );
 
     void destroy(VmaAllocator allocator)
@@ -242,6 +245,7 @@ public:
             deviceAddress = other.deviceAddress;
             _mappedMemory = other._mappedMemory;
             _isDestroyed = other._isDestroyed;
+            vkGetBufferDeviceAddressKHR = other.vkGetBufferDeviceAddressKHR;
 
             other.handle = VK_NULL_HANDLE;
             other.allocation = VK_NULL_HANDLE;
@@ -249,6 +253,7 @@ public:
             other.deviceAddress = 0;
             other._mappedMemory = nullptr;
             other._isDestroyed = true;
+            other.vkGetBufferDeviceAddressKHR = nullptr;
         }
         return *this;
     }
@@ -268,9 +273,12 @@ inline void Buffer<BufferType::HostVisible>::create(
     VmaAllocator allocator,
     VkDevice device,
     VkDeviceSize bufferSize,
-    VkBufferUsageFlags usage
+    VkBufferUsageFlags usage,
+	PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR
 )
 {
+    vkGetBufferDeviceAddressKHR = pfn_vkGetBufferDeviceAddressKHR;
+
     _isDestroyed = false;
     size = bufferSize;
 
@@ -289,7 +297,7 @@ inline void Buffer<BufferType::HostVisible>::create(
     VkResult result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &handle, &allocation, &allocationInfo);
     if (result != VK_SUCCESS)
     {
-        throw std::runtime_error("Failed to create host-visible buffer: " + vkResultToString(result));
+        LOG_ERROR("Failed to create host-visible buffer: " + vkResultToString(result));
     }
 
     _mappedMemory = allocationInfo.pMappedData;
@@ -301,7 +309,7 @@ inline void Buffer<BufferType::HostVisible>::create(
             vmaDestroyBuffer(allocator, handle, allocation);
             handle = VK_NULL_HANDLE;
             allocation = VK_NULL_HANDLE;
-            throw std::runtime_error("Failed to map host-visible buffer memory: " + vkResultToString(result));
+            LOG_ERROR("Failed to map host-visible buffer memory: " + vkResultToString(result));
         }
     }
 
@@ -310,7 +318,7 @@ inline void Buffer<BufferType::HostVisible>::create(
         VkBufferDeviceAddressInfo addressInfo{};
         addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         addressInfo.buffer = handle;
-        deviceAddress = vkGetBufferDeviceAddress(device, &addressInfo);
+        deviceAddress = vkGetBufferDeviceAddressKHR(device, &addressInfo);
     }
 }
 
@@ -376,9 +384,12 @@ inline void Buffer<BufferType::DeviceLocal>::create(
     VmaAllocator allocator,
     VkDevice device,
     VkDeviceSize bufferSize,
-    VkBufferUsageFlags usage
+    VkBufferUsageFlags usage,
+	PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR
 )
 {
+    vkGetBufferDeviceAddressKHR = pfn_vkGetBufferDeviceAddressKHR;
+
     _isDestroyed = false;
     size = bufferSize;
     _mappedMemory = nullptr; // Device-local buffers are not host-accessible
@@ -396,7 +407,7 @@ inline void Buffer<BufferType::DeviceLocal>::create(
     VkResult result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &handle, &allocation, nullptr);
     if (result != VK_SUCCESS)
     {
-        throw std::runtime_error("Failed to create device-local buffer: " + vkResultToString(result));
+        LOG_ERROR("Failed to create device-local buffer: " + vkResultToString(result));
     }
 
     if (usage & VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT)
@@ -404,7 +415,7 @@ inline void Buffer<BufferType::DeviceLocal>::create(
         VkBufferDeviceAddressInfo addressInfo{};
         addressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
         addressInfo.buffer = handle;
-        deviceAddress = vkGetBufferDeviceAddress(device, &addressInfo);
+        deviceAddress = vkGetBufferDeviceAddressKHR(device, &addressInfo);
     }
 }
 
@@ -421,12 +432,12 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
 {
     if (data == nullptr)
     {
-        throw std::runtime_error("Cannot upload from null data pointer");
+        LOG_ERROR("Cannot upload from null data pointer");
     }
     
     if (offset + dataSize > size)
     {
-        throw std::runtime_error("Upload size exceeds buffer size");
+        LOG_ERROR("Upload size exceeds buffer size");
     }
     
     VkBuffer stagingBuffer = VK_NULL_HANDLE;
@@ -449,7 +460,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
                                       
     if (result != VK_SUCCESS || stagingBuffer == VK_NULL_HANDLE)
     {
-        throw std::runtime_error("Failed to create staging buffer: " + vkResultToString(result));
+        LOG_ERROR("Failed to create staging buffer: " + vkResultToString(result));
     }
     
     stagingMappedMemory = stagingAllocationInfo.pMappedData;
@@ -459,7 +470,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
         if (result != VK_SUCCESS || stagingMappedMemory == nullptr)
         {
             vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-            throw std::runtime_error("Failed to map staging buffer memory: " + vkResultToString(result));
+            LOG_ERROR("Failed to map staging buffer memory: " + vkResultToString(result));
         }
     }
     
@@ -478,7 +489,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
     if (result != VK_SUCCESS)
     {
         vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-        throw std::runtime_error("Failed to begin command buffer: " + vkResultToString(result));
+        LOG_ERROR("Failed to begin command buffer: " + vkResultToString(result));
     }
     
     VkBufferMemoryBarrier preCopyBarrier{};
@@ -531,7 +542,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
     if (result != VK_SUCCESS)
     {
         vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-        throw std::runtime_error("Failed to end command buffer: " + vkResultToString(result));
+        LOG_ERROR("Failed to end command buffer: " + vkResultToString(result));
     }
     
     VkSubmitInfo submitInfo{};
@@ -546,7 +557,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
     {
         vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
         BufferUtils::FencePool::getInstance().releaseFence(fence);
-        throw std::runtime_error("Failed to submit queue: " + vkResultToString(result));
+        LOG_ERROR("Failed to submit queue: " + vkResultToString(result));
     }
     
     result = vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
@@ -556,7 +567,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
     if (result != VK_SUCCESS)
     {
         vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-        throw std::runtime_error("Failed to wait for fence: " + vkResultToString(result));
+        LOG_ERROR("Failed to wait for fence: " + vkResultToString(result));
     }
     
     vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
@@ -570,10 +581,43 @@ inline void Buffer<BufferType::DeviceLocal>::updateData(
     VkDeviceSize offset
 )
 {
-    throw std::runtime_error("Direct updates not supported for device-local buffers. Use uploadData() instead.");
+    LOG_ERROR("Direct updates not supported for device-local buffers. Use uploadData() instead.");
 }
 
 inline void cleanupBufferResources(VkDevice device)
 {
     BufferUtils::FencePool::getInstance().cleanup(device);
 } 
+
+inline void ScratchBuffer::createScratchBuffer(VmaAllocator allocator, VkDevice device, VkDeviceSize size, PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR)
+{
+    vkGetBufferDeviceAddressKHR = pfn_vkGetBufferDeviceAddressKHR;
+
+    VkBufferCreateInfo bufferInfo{};
+    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+    bufferInfo.size = size;
+    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+    VmaAllocationCreateInfo allocInfo{};
+    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
+    allocInfo.flags = VMA_ALLOCATION_CREATE_STRATEGY_MIN_MEMORY_BIT;
+    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &handle, &allocation, nullptr);
+
+    VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
+    bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
+    bufferDeviceAddressInfo.buffer = handle;
+    deviceAddress = vkGetBufferDeviceAddressKHR(device, &bufferDeviceAddressInfo);
+}
+
+inline void ScratchBuffer::destroyScratchBuffer(VmaAllocator allocator)
+{
+    if (handle != VK_NULL_HANDLE)
+    {
+        vmaDestroyBuffer(allocator, handle, allocation);
+        handle = VK_NULL_HANDLE;
+        allocation = VK_NULL_HANDLE;
+        deviceAddress = 0;
+    }
+}

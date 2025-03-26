@@ -12,10 +12,13 @@
 #include "imgui_impl_glfw.h"
 #include "imgui_impl_vulkan.h"
 
+#include "VulkanContext.hpp"
+
 #include "FirstPersonCamera.h"
 #include "Timer.h"
 #include "MemoryClasses.hpp"
 #include "AccelerationStructure.h"
+#include "Buffer.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -208,13 +211,26 @@ struct Sphere
 class VoxelEngine 
 {
 public:
+    VoxelEngine() = default;
+
+    static VoxelEngine& getInstance()
+    {
+        static VoxelEngine instance;
+        return instance;
+    }
+
     void run() 
     {
         initWindow();
+        VulkanContext::Init(window, windowName.c_str());
         initVulkan();
         mainLoop();
         cleanup();
     }
+
+    VoxelEngine(VoxelEngine const&) = delete;
+    void operator=(VoxelEngine const&) = delete;
+    
 
 public:
 	static PFN_vkQueueSubmit2KHR vkQueueSubmit2KHR;
@@ -314,8 +330,7 @@ private:
 			imguiFramebuffers.clear();
 		}
 
-        void destroy(VkDevice device)
-        {
+        void destroy(VkDevice device){
 
             vkDestroyRenderPass(device, imguiRenderPass, nullptr);
 
@@ -507,6 +522,13 @@ private:
     std::vector<VkDescriptorSet> descriptorSetsRT;
 	VkDescriptorSetLayout descriptorSetLayoutRT = VK_NULL_HANDLE;
 
+    struct AccelerationStructure
+    {
+        VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
+        uint64_t deviceAddress;
+        Buffer<BufferType::DeviceLocal> buffer;
+    };
+
     AccelerationStructure bottomLevelAccelerationStructure;
     AccelerationStructure topLevelAccelerationStructure;
 
@@ -584,18 +606,6 @@ private:
     void initVMA();
 
     uint64_t getBufferDeviceAddress(VkBuffer buffer);
-
-    __forceinline ScratchBuffer createScratchBuffer(VkDeviceSize size) const
-	{
-		ScratchBuffer scratchBuffer{};
-        ScratchBuffer::createScratchBuffer(vmaAllocator, device, size, scratchBuffer);
-        return scratchBuffer;
-	}
-
-	__forceinline void deleteScratchBuffer(ScratchBuffer& scratchBuffer) const
-	{
-		ScratchBuffer::destroyScratchBuffer(vmaAllocator, scratchBuffer);
-	}
 
     __forceinline uint32_t alignedSize(uint32_t value, uint32_t alignment)
 	{

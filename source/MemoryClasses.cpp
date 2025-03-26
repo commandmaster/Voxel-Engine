@@ -1,36 +1,7 @@
 #include "MemoryClasses.hpp"
 #include "VoxelEngine.hpp"
 
-void ScratchBuffer::createScratchBuffer(VmaAllocator allocator, VkDevice device, VkDeviceSize size, ScratchBuffer& scratchBuffer)
-{
-    VkBufferCreateInfo bufferInfo{};
-    bufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-    bufferInfo.size = size;
-    bufferInfo.usage = VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-    VmaAllocationCreateInfo allocInfo{};
-    allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
-    allocInfo.flags = VMA_ALLOCATION_CREATE_STRATEGY_MIN_MEMORY_BIT;
-    allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
-
-    vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &scratchBuffer.handle, &scratchBuffer.allocation, nullptr);
-
-    VkBufferDeviceAddressInfoKHR bufferDeviceAddressInfo{};
-    bufferDeviceAddressInfo.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO;
-    bufferDeviceAddressInfo.buffer = scratchBuffer.handle;
-    scratchBuffer.deviceAddress = VoxelEngine::vkGetBufferDeviceAddressKHR(device, &bufferDeviceAddressInfo);
-}
-
-void ScratchBuffer::destroyScratchBuffer(VmaAllocator allocator, ScratchBuffer& scratchBuffer)
-{
-    if (scratchBuffer.handle != VK_NULL_HANDLE)
-    {
-        vmaDestroyBuffer(allocator, scratchBuffer.handle, scratchBuffer.allocation);
-        scratchBuffer.handle = VK_NULL_HANDLE;
-        scratchBuffer.allocation = VK_NULL_HANDLE;
-        scratchBuffer.deviceAddress = 0;
-    }
-}
 
 void ManagedBuffer::create(
     VmaAllocator allocator,

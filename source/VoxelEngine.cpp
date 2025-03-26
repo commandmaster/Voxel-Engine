@@ -8,7 +8,7 @@ std::string Shader::readShaderFile(const std::string& path)
 	std::ifstream file(path);
 	if (!file.is_open())
 	{
-		throw std::runtime_error("Failed to open shader file: " + path);
+        LOG_ERROR("Failed to open shader file: " + path);
 	}
 
 	std::stringstream buffer;
@@ -29,7 +29,7 @@ std::vector<uint32_t> Shader::compileGLSLToSPIRV(const std::string& source, shad
 	shaderc::SpvCompilationResult module = compiler.CompileGlslToSpv(source, kind, shaderName, options);
 
 	if (module.GetCompilationStatus() != shaderc_compilation_status_success) {
-		std::cerr << "Shader compilation failed: " << module.GetErrorMessage() << std::endl;
+		LOG_ERROR("Shader compilation failed: " + std::string(module.GetErrorMessage()));
 		return {};
 	}
 
@@ -47,7 +47,7 @@ VkShaderModule Shader::createShaderModule(VkDevice device, const std::vector<uin
 	VkShaderModule shaderModule;
 	if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
 	{
-		throw std::runtime_error("Failed to create shader module!");
+		LOG_ERROR("Failed to create shader module!");
 	}
 
 	return shaderModule;
@@ -193,7 +193,7 @@ void VoxelEngine::setupDebugMessenger()
 
 	if (CreateDebugUtilsMessengerEXT(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to set up debug messenger!");
+		LOG_ERROR("failed to set up debug messenger!");
 	}
 }
 
@@ -201,7 +201,7 @@ void VoxelEngine::createInstance()
 {
 	if (enableValidationLayers && !checkValidationLayerSupport())
 	{
-		throw std::runtime_error("validation layers requested, but not available!");
+		LOG_ERROR("validation layers requested, but not available!");
 	}
 
 	VkApplicationInfo appInfo{};
@@ -241,7 +241,7 @@ void VoxelEngine::createInstance()
 
 	if (vkCreateInstance(&createInfo, nullptr, &instance) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to create instance!");
+		LOG_ERROR("failed to create instance!");
 	}
 }
 
@@ -420,7 +420,7 @@ void VoxelEngine::pickPhysicalDevice()
 
 	if (deviceCount == 0)
 	{
-		throw std::runtime_error("failed to find GPUs with Vulkan support!");
+		LOG_ERROR("failed to find GPUs with Vulkan support!");
 	}
 
 
@@ -438,7 +438,7 @@ void VoxelEngine::pickPhysicalDevice()
 
 	if (physicalDevice == VK_NULL_HANDLE)
 	{
-		throw std::runtime_error("failed to find a suitable GPU!");
+		LOG_ERROR("failed to find a suitable GPU!");
 	}
 	
 	VkPhysicalDeviceProperties2 prop2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
@@ -467,7 +467,6 @@ void VoxelEngine::createLogicalDevice()
 		queueCreateInfos.push_back(queueCreateInfo);
 	}
 
-	// Initialize device features using our feature chain with the simplified method
 	auto rtPipelineFeatures = featureChain.enableFeature<VkPhysicalDeviceRayTracingPipelineFeaturesKHR>(&VkPhysicalDeviceRayTracingPipelineFeaturesKHR::rayTracingPipeline);
 	
 	accelerationStructureFeatures = featureChain.enableFeature<VkPhysicalDeviceAccelerationStructureFeaturesKHR>(&VkPhysicalDeviceAccelerationStructureFeaturesKHR::accelerationStructure);
@@ -476,7 +475,6 @@ void VoxelEngine::createLogicalDevice()
 	
 	auto sync2Features = featureChain.enableFeature<VkPhysicalDeviceSynchronization2FeaturesKHR>(&VkPhysicalDeviceSynchronization2FeaturesKHR::synchronization2);
 	
-	// Add Features2 at the end of our chain
 	auto deviceExtensionFeatures = featureChain.addFeature<VkPhysicalDeviceFeatures2>();
 
     VkDeviceCreateInfo createInfo{};
@@ -499,7 +497,7 @@ void VoxelEngine::createLogicalDevice()
 	
 	if (vkCreateDevice(physicalDevice, &createInfo, nullptr, &device) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to create logical device!");
+		LOG_ERROR("failed to create logical device!");
 	}
 
 	vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
@@ -565,7 +563,7 @@ void VoxelEngine::createSurface()
 {
 	if (glfwCreateWindowSurface(instance, window, nullptr, &surface) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to create window surface!");
+		LOG_ERROR("failed to create window surface!");
 	}
 }
 
@@ -620,7 +618,7 @@ void VoxelEngine::createSwapChain()
 
 	if (vkCreateSwapchainKHR(device, &createInfo, nullptr, &swapChain) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to create swap chain!");
+		LOG_ERROR("failed to create swap chain!");
 	}
 
 	vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr); // we specify the minimum number of images but the implementation can create more, thus here we check the actual image count
@@ -658,7 +656,7 @@ void VoxelEngine::createImageViews()
 
 		if (vkCreateImageView(device, &createInfo, nullptr, &swapChainImageViews[i]) != VK_SUCCESS)
 		{
-			throw std::runtime_error("failed to create image views!");
+			LOG_ERROR("failed to create image views!");
 		}
 	}
 }
@@ -676,7 +674,7 @@ void VoxelEngine::createCommandPool()
 
 	if (vkCreateCommandPool(device, &poolInfo, nullptr, &commandPool) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to create command pool!");
+		LOG_ERROR("failed to create command pool!");
 	}
 }
 
@@ -691,7 +689,7 @@ VkCommandBuffer VoxelEngine::createCommandBuffer(VkDevice device, VkCommandPool 
     VkCommandBuffer commandBuffer;
     if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) 
 	{
-        throw std::runtime_error("Failed to allocate command buffer");
+        LOG_ERROR("Failed to allocate command buffer");
     }
 
     if (singleUse) 
@@ -749,7 +747,7 @@ void VoxelEngine::createCommandBuffers()
 
 	if (vkAllocateCommandBuffers(device, &allocInfo, commandBuffers.data()) != VK_SUCCESS)
 	{
-		throw std::runtime_error("failed to allocate command buffers!");
+		LOG_ERROR("failed to allocate command buffers!");
 	}
 
 }
@@ -853,16 +851,21 @@ void VoxelEngine::createBLAS()
     VkDeviceSize aabbBufferSize = aabbs.size() * sizeof(VkAabbPositionsKHR);
 
     const VkBufferUsageFlags bufferUsageFlags = 
-        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+        VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR | 
+        VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-    ManagedBuffer aabbBuffer;
-    aabbBuffer.create(vmaAllocator, device, aabbBufferSize, 
-                     bufferUsageFlags, 
-                     ManagedBuffer::BufferType::HostVisible);
+    Buffer<BufferType::HostVisible> aabbBuffer;
+    aabbBuffer.create(
+        vmaAllocator, 
+        device, 
+        aabbBufferSize, 
+        bufferUsageFlags, 
+        VoxelEngine::vkGetBufferDeviceAddressKHR
+    );
     aabbBuffer.updateData(vmaAllocator, aabbs.data(), aabbBufferSize);
 
     VkDeviceOrHostAddressConstKHR aabbDataDeviceAddress{};
-    aabbDataDeviceAddress.deviceAddress = getBufferDeviceAddress(aabbBuffer.handle);
+    aabbDataDeviceAddress.deviceAddress = aabbBuffer.deviceAddress;
 
     VkAccelerationStructureGeometryKHR accelerationStructureGeometry{};
     accelerationStructureGeometry.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_GEOMETRY_KHR;
@@ -896,15 +899,15 @@ void VoxelEngine::createBLAS()
         &primitiveCount,
         &accelerationStructureBuildSizesInfo);
 
-    ManagedBuffer accelerationStorage;
+    Buffer<BufferType::DeviceLocal> accelerationStorage;
     accelerationStorage.create(
         vmaAllocator,
         device,
         accelerationStructureBuildSizesInfo.accelerationStructureSize,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR | 
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        ManagedBuffer::BufferType::DeviceLocal
-    );
+		VoxelEngine::vkGetBufferDeviceAddressKHR
+	);
 
     VkAccelerationStructureCreateInfoKHR accelerationStructureCreateInfo{};
     accelerationStructureCreateInfo.sType = 
@@ -923,8 +926,7 @@ void VoxelEngine::createBLAS()
         &blasHandle);
 
     ScratchBuffer scratchBuffer;
-    ScratchBuffer::createScratchBuffer(vmaAllocator, device, 
-        accelerationStructureBuildSizesInfo.buildScratchSize, scratchBuffer);
+    scratchBuffer.createScratchBuffer(vmaAllocator, device, accelerationStructureBuildSizesInfo.buildScratchSize, VoxelEngine::vkGetBufferDeviceAddressKHR);
 
     VkAccelerationStructureBuildGeometryInfoKHR buildInfo{};
     buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
@@ -948,7 +950,7 @@ void VoxelEngine::createBLAS()
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRangeInfos.data());
     flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
 
-    ScratchBuffer::destroyScratchBuffer(vmaAllocator, scratchBuffer);
+    scratchBuffer.destroyScratchBuffer(vmaAllocator);
     aabbBuffer.destroy(vmaAllocator);
 
     bottomLevelAccelerationStructure.handle = blasHandle;
@@ -980,12 +982,16 @@ void VoxelEngine::createTLAS()
 	instance.accelerationStructureReference = bottomLevelAccelerationStructure.deviceAddress;
 
     // Create instance buffer
-    ManagedBuffer instancesBuffer;
+    Buffer<BufferType::HostVisible> instancesBuffer;
     const VkDeviceSize instanceBufferSize = sizeof(instance);
-    instancesBuffer.create(vmaAllocator, device, instanceBufferSize,
+    instancesBuffer.create(
+        vmaAllocator, 
+        device, 
+        instanceBufferSize,
         VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR |
         VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        ManagedBuffer::BufferType::HostVisible);
+		VoxelEngine::vkGetBufferDeviceAddressKHR
+    );
     instancesBuffer.updateData(vmaAllocator, &instance, instanceBufferSize);
 
     // Get device address of instance buffer
@@ -1020,34 +1026,33 @@ void VoxelEngine::createTLAS()
         &sizeInfo);
 
     // Create TLAS buffer
-	topLevelAccelerationStructure.buffer.create(
+	Buffer<BufferType::DeviceLocal> accelerationStorage;
+	accelerationStorage.create(
 		vmaAllocator,
 		device,
 		sizeInfo.accelerationStructureSize,
 		VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR |
 		VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-		ManagedBuffer::BufferType::DeviceLocal
+		VoxelEngine::vkGetBufferDeviceAddressKHR
 	);
-
-    ManagedBuffer& accelerationStorage = topLevelAccelerationStructure.buffer;
+	
+	topLevelAccelerationStructure.buffer = std::move(accelerationStorage);
 
     // Create acceleration structure
     VkAccelerationStructureCreateInfoKHR createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_CREATE_INFO_KHR;
-    createInfo.buffer = accelerationStorage.handle;
+    createInfo.buffer = topLevelAccelerationStructure.buffer.handle;
     createInfo.size = sizeInfo.accelerationStructureSize;
     createInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
 
 
     VkAccelerationStructureKHR tlasHandle;
-    if (vkCreateAccelerationStructureKHR(device, &createInfo, nullptr, &tlasHandle) != VK_SUCCESS)
-	{
-        throw std::runtime_error("Failed to create TLAS");
-    }
+    VK_ERROR_CHECK(vkCreateAccelerationStructureKHR(device, &createInfo, nullptr, &tlasHandle));
+
 
     // Create scratch buffer
     ScratchBuffer scratchBuffer;
-    ScratchBuffer::createScratchBuffer(vmaAllocator, device, sizeInfo.buildScratchSize, scratchBuffer);
+    scratchBuffer.createScratchBuffer(vmaAllocator, device, sizeInfo.buildScratchSize, VoxelEngine::vkGetBufferDeviceAddressKHR);
 
     // Build TLAS
     buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
@@ -1063,7 +1068,7 @@ void VoxelEngine::createTLAS()
     vkCmdBuildAccelerationStructuresKHR(cmd, 1, &buildInfo, buildRanges.data());
     flushCommandBuffer(device, cmd, graphicsQueue, commandPool, true);
 
-    ScratchBuffer::destroyScratchBuffer(vmaAllocator, scratchBuffer);
+    scratchBuffer.destroyScratchBuffer(vmaAllocator);
     instancesBuffer.destroy(vmaAllocator);
 
     // Store results
@@ -1179,10 +1184,7 @@ void VoxelEngine::createDescriptorSetsRT()
     poolInfo.pPoolSizes = poolSizes.data();
     poolInfo.maxSets = MAX_FRAMES_IN_FLIGHT; 
 
-    if (vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool) != VK_SUCCESS) 
-	{
-        throw std::runtime_error("failed to create descriptor pool!");
-    }
+    VK_ERROR_CHECK(vkCreateDescriptorPool(device, &poolInfo, nullptr, &descriptorPool));
 
     descriptorSetsRT.resize(MAX_FRAMES_IN_FLIGHT);
     
@@ -1194,10 +1196,7 @@ void VoxelEngine::createDescriptorSetsRT()
     allocInfo.descriptorSetCount = MAX_FRAMES_IN_FLIGHT;
     allocInfo.pSetLayouts = layouts.data();
 
-    if (vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()) != VK_SUCCESS) 
-	{
-        throw std::runtime_error("failed to allocate descriptor sets!");
-    }
+    VK_ERROR_CHECK(vkAllocateDescriptorSets(device, &allocInfo, descriptorSetsRT.data()));
 
     for (uint32_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) 
 	{
@@ -1334,10 +1333,7 @@ void VoxelEngine::createRayTracingPipeline()
 	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
 	layoutInfo.pBindings    = bindings.data();
 
-	if (vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayoutRT) != VK_SUCCESS)
-	{
-		throw std::runtime_error("failed to create descriptor set layout");
-	}
+	VK_ERROR_CHECK(vkCreateDescriptorSetLayout(device, &layoutInfo, nullptr, &descriptorSetLayoutRT));
 
 	VkPushConstantRange pushConstantRange = {};
 	pushConstantRange.stageFlags = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR; // Include closest hit stage
@@ -1351,10 +1347,7 @@ void VoxelEngine::createRayTracingPipeline()
 	pipelineLayoutCreateInfo.pushConstantRangeCount = 1;
 	pipelineLayoutCreateInfo.pPushConstantRanges = &pushConstantRange;
 
-	if (vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &rtPipelineLayout) != VK_SUCCESS)
-	{
-		throw std::runtime_error("failed to create pipeline layout (RT)");
-	}
+	VK_ERROR_CHECK(vkCreatePipelineLayout(device, &pipelineLayoutCreateInfo, nullptr, &rtPipelineLayout));
 
 	std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
 
@@ -1452,10 +1445,7 @@ void VoxelEngine::createRayTracingPipeline()
 	raytracingPipelineCreateInfo.maxPipelineRayRecursionDepth = 1;
 	raytracingPipelineCreateInfo.layout                       = rtPipelineLayout;
 
-	if (vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracingPipelineCreateInfo, nullptr, &rtPipeline) != VK_SUCCESS)
-	{
-		throw std::runtime_error("could not create the ray tracing pipelien");
-	}
+	VK_ERROR_CHECK(vkCreateRayTracingPipelinesKHR(device, VK_NULL_HANDLE, VK_NULL_HANDLE, 1, &raytracingPipelineCreateInfo, nullptr, &rtPipeline));
 	
 	vkDestroyShaderModule(device, raygenShaderModule, nullptr);
 	vkDestroyShaderModule(device, missShaderModule, nullptr);
@@ -1500,7 +1490,7 @@ void VoxelEngine::createSyncObjects()
             vkCreateSemaphore(device, &semaphoreInfo, nullptr, &renderFinishedSemaphores[i]) != VK_SUCCESS ||
             vkCreateFence(device, &fenceInfo, nullptr, &inFlightFences[i]) != VK_SUCCESS) 
 		{
-            throw std::runtime_error("failed to create synchronization objects!");
+            LOG_ERROR("failed to create synchronization objects!");
         }
     }
 }
@@ -1699,7 +1689,7 @@ void VoxelEngine::updateUniformBuffersRT()
 		} 
 		else 
 		{
-			throw std::runtime_error("Trying to update non-host-visible uniform buffer");
+			LOG_ERROR("Trying to update non-host-visible uniform buffer");
 		}
 	}
 }
@@ -1818,7 +1808,7 @@ void VoxelEngine::drawFrameRT()
         recreateSwapChain();
         return;
     } else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-        throw std::runtime_error("failed to acquire swap chain image!");
+        LOG_ERROR("failed to acquire swap chain image!");
     }
     
     // Check if a previous frame is using this image (i.e., there is its fence to wait on)
@@ -1838,16 +1828,13 @@ void VoxelEngine::drawFrameRT()
     beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
     beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     
-    if (vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo) != VK_SUCCESS) {
-        throw std::runtime_error("failed to begin recording command buffer!");
-    }
+    VK_ERROR_CHECK(vkBeginCommandBuffer(commandBuffers[currentFrame], &beginInfo));
     
 
     recordFrameCommands(commandBuffers[currentFrame], imageIndex, currentFrame);
 
-    if (vkEndCommandBuffer(commandBuffers[currentFrame]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to record command buffer!");
-    }
+    VK_ERROR_CHECK(vkEndCommandBuffer(commandBuffers[currentFrame]));
+    
     
     VkSubmitInfo submitInfo{};
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
@@ -1865,9 +1852,7 @@ void VoxelEngine::drawFrameRT()
     submitInfo.signalSemaphoreCount = 1;
     submitInfo.pSignalSemaphores = signalSemaphores;
 
-    if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
-        throw std::runtime_error("failed to submit draw command buffer!");
-    }
+    VK_ERROR_CHECK(vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]));
 
     
     // Present the image
@@ -1889,7 +1874,7 @@ void VoxelEngine::drawFrameRT()
         framebufferResized = false;
         recreateSwapChain();
     } else if (result != VK_SUCCESS) {
-        throw std::runtime_error("failed to present swap chain image!");
+        LOG_ERROR("failed to present swap chain image!");
     }
     
     // Advance to the next frame
@@ -1938,6 +1923,8 @@ void VoxelEngine::cleanup()
 	vkDestroyDevice(device, nullptr);
 	vkDestroySurfaceKHR(instance, surface, nullptr);
 	vkDestroyInstance(instance, nullptr);
+
+	VulkanContext::Cleanup();
 
 	glfwDestroyWindow(window);
 	glfwTerminate();

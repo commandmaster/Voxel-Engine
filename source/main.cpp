@@ -2,7 +2,7 @@
 
 int main() 
 {
-    VoxelEngine app;
+    VoxelEngine& app = VoxelEngine::getInstance();
 
     try 
     {

@@ -9,20 +9,6 @@
 #include <memory>
 #include <iostream>
 
-#include "Buffer.hpp"
-
-
-struct ScratchBuffer
-{
-    uint64_t deviceAddress = 0;
-    VkBuffer handle = VK_NULL_HANDLE;
-    VmaAllocation allocation;
-
-    static void createScratchBuffer(VmaAllocator allocator, VkDevice device, VkDeviceSize size, ScratchBuffer& scratchBuffer);
-
-    static void destroyScratchBuffer(VmaAllocator allocator, ScratchBuffer& scratchBuffer);
-};
-
 class ManagedBuffer 
 {
 public:
