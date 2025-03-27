@@ -371,7 +371,7 @@ namespace VulkanContext
         VkFence fence;
         VK_ERROR_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &fence));
 
-        VK_ERROR_CHECK(vkQueueSubmit2(queue, 1, &submitInfo2, fence));
+        VK_ERROR_CHECK(VulkanContext::vkQueueSubmit2KHR(queue, 1, &submitInfo2, fence));
 
         VK_ERROR_CHECK(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
 
@@ -379,6 +379,8 @@ namespace VulkanContext
         {
             vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
         }
+
+		vkDestroyFence(device, fence, nullptr);
 	}
 
 	
@@ -660,6 +662,7 @@ namespace VulkanContext
 			reinterpret_cast<PFN_vkCmdTraceRaysKHR>(
 				vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR")
 			);
+
 
 	}
 

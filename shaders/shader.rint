@@ -19,7 +19,7 @@ struct HitInformation
 hitAttributeEXT HitInformation attribs;
 
 void main() {
-    uint sphereIdx = gl_PrimitiveID;
+    uint sphereIdx = gl_InstanceCustomIndexEXT + gl_PrimitiveID;
     attribs.debugHit = false;
     
     // Transform ray to object space using instance transform

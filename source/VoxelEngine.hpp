@@ -329,9 +329,7 @@ private:
         Buffer<BufferType::DeviceLocal> buffer;
     };
 
-    AccelerationStructure bottomLevelAccelerationStructure;
-    AccelerationStructure topLevelAccelerationStructure;
-
+    AccelerationStructureManager accelerationStructureManager;
 
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
 
@@ -390,8 +388,6 @@ private:
     void createBLAS();
 
     void createTLAS();
-
-    void deleteAS(AccelerationStructure& accelerationStructure);
 
     void createShaderBindingTables();
 
