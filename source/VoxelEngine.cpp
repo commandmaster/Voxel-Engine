@@ -233,62 +233,60 @@ void VoxelEngine::createImageViews()
 	}
 }
 
-
 VkCommandBuffer VoxelEngine::createCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level, bool singleUse)
 {
 	VkCommandBufferAllocateInfo allocInfo{};
-    allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-    allocInfo.commandPool = commandPool;
-    allocInfo.level = level;
-    allocInfo.commandBufferCount = 1;
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.commandPool = commandPool;
+	allocInfo.level = level;
+	allocInfo.commandBufferCount = 1;
 
-    VkCommandBuffer commandBuffer;
-    if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) 
+	VkCommandBuffer commandBuffer;
+	if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS) 
 	{
-        LOG_ERROR("Failed to allocate command buffer");
-    }
+		LOG_ERROR("Failed to allocate command buffer");
+	}
 
-    if (singleUse) 
+	if (singleUse) 
 	{
-        VkCommandBufferBeginInfo beginInfo{};
-        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-        beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
-        vkBeginCommandBuffer(commandBuffer, &beginInfo);
-    }
+		VkCommandBufferBeginInfo beginInfo{};
+		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+		vkBeginCommandBuffer(commandBuffer, &beginInfo);
+	}
 
-    return commandBuffer;	
+	return commandBuffer;	
 }
 
 void VoxelEngine::flushCommandBuffer(VkDevice device, VkCommandBuffer commandBuffer, VkQueue queue, VkCommandPool commandPool, bool free)
 {
 	if (commandBuffer == VK_NULL_HANDLE) return;
 
-    VkCommandBufferSubmitInfoKHR submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO_KHR;
-    submitInfo.commandBuffer = commandBuffer;
-    
-    VkFence fence;
-    VkFenceCreateInfo fenceInfo{};
-    fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-    vkCreateFence(device, &fenceInfo, nullptr, &fence);
+	VkCommandBufferSubmitInfoKHR submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO_KHR;
+	submitInfo.commandBuffer = commandBuffer;
+	
+	VkFence fence;
+	VkFenceCreateInfo fenceInfo{};
+	fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+	vkCreateFence(device, &fenceInfo, nullptr, &fence);
 
-    VkSubmitInfo2KHR finalSubmit{};
-    finalSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2_KHR;
-    finalSubmit.commandBufferInfoCount = 1;
-    finalSubmit.pCommandBufferInfos = &submitInfo;
-    
-    vkEndCommandBuffer(commandBuffer);
-    VulkanContext::vkQueueSubmit2KHR(queue, 1, &finalSubmit, fence);
+	VkSubmitInfo2KHR finalSubmit{};
+	finalSubmit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2_KHR;
+	finalSubmit.commandBufferInfoCount = 1;
+	finalSubmit.pCommandBufferInfos = &submitInfo;
+	
+	vkEndCommandBuffer(commandBuffer);
+	VulkanContext::vkQueueSubmit2KHR(queue, 1, &finalSubmit, fence);
 
-    vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-    vkDestroyFence(device, fence, nullptr);
+	vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
+	vkDestroyFence(device, fence, nullptr);
 
-    if (free)
+	if (free)
 	{
-        vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
-    }
+		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+	}
 }
-
 
 void VoxelEngine::createCommandBuffers()
 {
@@ -307,7 +305,6 @@ void VoxelEngine::createCommandBuffers()
 	}
 
 }
-
 
 uint64_t VoxelEngine::getBufferDeviceAddress(VkBuffer buffer)
 {
@@ -593,7 +590,6 @@ void VoxelEngine::createTLAS()
 
     VkAccelerationStructureKHR tlasHandle;
     VK_ERROR_CHECK(VulkanContext::vkCreateAccelerationStructureKHR(VulkanContext::device, &createInfo, nullptr, &tlasHandle));
-
 
     // Create scratch buffer
     ScratchBuffer scratchBuffer;

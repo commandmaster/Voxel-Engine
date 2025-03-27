@@ -63,6 +63,7 @@ namespace VulkanContext
     QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device);
 	SwapChainSupportDetails QuerySwapChainSupport(VkPhysicalDevice device);
     
-    VkCommandBuffer BeginSingleTimeCommands();
-    void EndSingleTimeCommands(VkCommandBuffer commandBuffer);
+	VkCommandBuffer CreateCommandBuffer(VkCommandBufferLevel level, bool singleUse);
+    void SubmitCommandBuffer(VkCommandBuffer commandBuffer, VkQueue queue, bool free);
+
 }

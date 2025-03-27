@@ -10,12 +10,13 @@ struct RayPayload
     vec4 debugColor;
 };
 
-struct HitInformation
+
+struct HitInformation 
 {
-    vec3 normal;
+    vec3 normalOS;       // Object space normal
+    vec3 hitPositionOS;  // Object space hit position
     bool debugHit;
 };
-
 
 layout(location = 0) rayPayloadInEXT RayPayload payload;
 hitAttributeEXT HitInformation attribs;
@@ -31,10 +32,11 @@ void main() {
     if (!attribs.debugHit) 
     {
 		// Surface normal comes from the hit attributes
-		vec3 normal = attribs.normal;
-		
+		mat3 normalMatrix = transpose(inverse(mat3(gl_ObjectToWorldEXT)));
+		vec3 normalWS = normalize(normalMatrix * attribs.normalOS);		
+
 		// Calculate diffuse lighting - dot product of normal and light direction
-		float diffuse = max(dot(normal, normalize(constants.lightDir)), 0.0);
+		float diffuse = max(dot(normalWS, normalize(constants.lightDir)), 0.0);
 		
 		// Base material color (could be added as a parameter per sphere)
 		vec3 materialColor = vec3(0.8, 0.2, 0.2); // Red material
@@ -45,7 +47,7 @@ void main() {
 		
 		// Final color is the sum of ambient and diffuse
 		payload.color = ambient + diffuseColor;
-		payload.normal = normal;
+		payload.normal = normalWS;
 
 
 	}

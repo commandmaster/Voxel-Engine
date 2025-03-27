@@ -332,6 +332,8 @@ private:
     AccelerationStructure bottomLevelAccelerationStructure;
     AccelerationStructure topLevelAccelerationStructure;
 
+    AccelerationStructureManager accelerationStructureManager;
+
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
 
     ManagedBuffer raygenShaderBindingTable;
@@ -369,9 +371,9 @@ private:
 
     void createImageViews();
 
-    VkCommandBuffer createCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level, bool singleUse);
+    static VkCommandBuffer createCommandBuffer(VkDevice device, VkCommandPool commandPool, VkCommandBufferLevel level, bool singleUse);
 
-    void flushCommandBuffer(VkDevice device, VkCommandBuffer commandBuffer, VkQueue queue, VkCommandPool commandPool, bool free);
+    static void flushCommandBuffer(VkDevice device, VkCommandBuffer commandBuffer, VkQueue queue, VkCommandPool commandPool, bool free);
     
     void createCommandBuffers();
 
@@ -383,6 +385,8 @@ private:
 	}
 
     void createStorageImages();
+
+    void setupAccelerationStructures();
 
     void createBLAS();
 

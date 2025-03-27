@@ -325,59 +325,63 @@ namespace VulkanContext
 		return details;
 	}
 
-	VkCommandBuffer BeginSingleTimeCommands()
+	VkCommandBuffer CreateCommandBuffer(VkCommandBufferLevel level, bool singleUse)
 	{
-		VkCommandBufferAllocateInfo allocInfo{};
-		allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
-		allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-		allocInfo.commandPool = commandPool;
-		allocInfo.commandBufferCount = 1;
+        VkCommandBufferAllocateInfo allocInfo{};
+        allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+        allocInfo.level = level;
+        allocInfo.commandPool = commandPool;
+        allocInfo.commandBufferCount = 1;
 
-		VkCommandBuffer commandBuffer;
-		if (vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer) != VK_SUCCESS)
-		{
-			LOG_ERROR("Failed to allocate command buffer");
-		}
+        VkCommandBuffer commandBuffer;
 
-		VkCommandBufferBeginInfo beginInfo{};
-		beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-		beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+        VK_ERROR_CHECK(vkAllocateCommandBuffers(device, &allocInfo, &commandBuffer));
 
-		if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS)
-		{
-			LOG_ERROR("Failed to begin command buffer");
-		}
+        VkCommandBufferBeginInfo beginInfo{};
+        beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+        beginInfo.flags = singleUse ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 
-		return commandBuffer;
+        VK_ERROR_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+
+        return commandBuffer;
 	}
 
-	void EndSingleTimeCommands(VkCommandBuffer commandBuffer)
+	void SubmitCommandBuffer(VkCommandBuffer commandBuffer, VkQueue queue, bool free)
 	{
-		if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS)
-		{
-			LOG_ERROR("Failed to end command buffer");
-		}
+        VkSubmitInfo submitInfo{};
+        submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+        submitInfo.commandBufferCount = 1;
+        submitInfo.pCommandBuffers = &commandBuffer;
 
-		VkSubmitInfo submitInfo{};
-		submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-		submitInfo.commandBufferCount = 1;
-		submitInfo.pCommandBuffers = &commandBuffer;
+        VK_ERROR_CHECK(vkEndCommandBuffer(commandBuffer));
 
-		VkFence fence;
-		VkFenceCreateInfo fenceInfo{};
-		fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-		vkCreateFence(device, &fenceInfo, nullptr, &fence);
+        VkSubmitInfo2 submitInfo2{};
+        submitInfo2.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO_2;
 
-		if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, fence) != VK_SUCCESS)
-		{
-			LOG_ERROR("Failed to submit command buffer");
-		}
+        VkCommandBufferSubmitInfo cmdSubmitInfo{};
+        cmdSubmitInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO;
+        cmdSubmitInfo.commandBuffer = commandBuffer;
 
-		vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-		vkDestroyFence(device, fence, nullptr);
-		vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+        submitInfo2.commandBufferInfoCount = 1;
+        submitInfo2.pCommandBufferInfos = &cmdSubmitInfo;
+
+        VkFenceCreateInfo fenceInfo{};
+        fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
+
+        VkFence fence;
+        VK_ERROR_CHECK(vkCreateFence(device, &fenceInfo, nullptr, &fence));
+
+        VK_ERROR_CHECK(vkQueueSubmit2(queue, 1, &submitInfo2, fence));
+
+        VK_ERROR_CHECK(vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX));
+
+        if (free)
+        {
+            vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
+        }
 	}
 
+	
 	bool checkDeviceExtensionSupport(VkPhysicalDevice device)
 	{
 		uint32_t extensionCount;

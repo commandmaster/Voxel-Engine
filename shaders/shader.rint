@@ -2,63 +2,62 @@
 #extension GL_EXT_ray_tracing : require
 #extension GL_EXT_nonuniform_qualifier : enable
 
+layout(binding = 1, rgba32f) uniform image2D storageImage;
+
 layout(binding = 3) buffer SphereBuffer 
 {
     vec4 spheres[];
 };
 
-layout(binding = 1, rgba32f) uniform image2D storageImage;
-
-
-struct HitInformation
+struct HitInformation 
 {
-    vec3 normal;
+    vec3 normalOS;       // Object space normal
+    vec3 hitPositionOS;  // Object space hit position
     bool debugHit;
 };
 
-
 hitAttributeEXT HitInformation attribs;
-
 
 void main() {
     uint sphereIdx = gl_PrimitiveID;
     attribs.debugHit = false;
-
-    vec4 sphere = spheres[sphereIdx];
-    vec3 center = sphere.xyz;
-    float radius = sphere.w;
-
-    vec3 rayOrigin = gl_WorldRayOriginEXT;
-    vec3 rayDir = gl_WorldRayDirectionEXT;
     
-    vec3 oc = rayOrigin - center;
-    float a = dot(rayDir, rayDir);
-    float b = 2.0 * dot(oc, rayDir);
-    float c = dot(oc, oc) - radius*radius;
+    // Transform ray to object space using instance transform
+    vec3 rayOriginOS = (gl_WorldToObjectEXT * vec4(gl_WorldRayOriginEXT, 1.0)).xyz;
+    vec3 rayDirOS = (gl_WorldToObjectEXT * vec4(gl_WorldRayDirectionEXT, 0.0)).xyz;
+    
+    // Unit sphere parameters in object space
+    vec4 sphere = spheres[sphereIdx];
+    const vec3 center = sphere.xyz;
+    float sphereRadius = sphere.w;
+    
+    // Ray-sphere intersection in object space
+    vec3 oc = rayOriginOS - center;
+    float a = dot(rayDirOS, rayDirOS);
+    float b = 2.0 * dot(oc, rayDirOS);
+    float c = dot(oc, oc) - sphereRadius*sphereRadius;
     float disc = b*b - 4*a*c;
-   
-    if (disc >= 0.0)
-    {
+
+    if (disc >= 0.0) {
         float sqrtDisc = sqrt(disc);
         float t1 = (-b - sqrtDisc) / (2.0 * a);
         float t2 = (-b + sqrtDisc) / (2.0 * a);
 
         float t = min(t1, t2);
-        if (t >= gl_RayTminEXT && t <= gl_RayTmaxEXT) 
-        {
-            attribs.normal = normalize(rayOrigin + t*rayDir - center);
+        if (t >= gl_RayTminEXT && t <= gl_RayTmaxEXT) {
+            attribs.hitPositionOS = rayOriginOS + t*rayDirOS;
+            attribs.normalOS = normalize(attribs.hitPositionOS - center);
             reportIntersectionEXT(t, 0);
             return;
         } 
-        else if (t2 >= gl_RayTminEXT && t2 <= gl_RayTmaxEXT) 
-        {
+        else if (t2 >= gl_RayTminEXT && t2 <= gl_RayTmaxEXT) {
             t = t2;
-            attribs.normal = normalize(rayOrigin + t*rayDir - center);
+            attribs.hitPositionOS = rayOriginOS + t*rayDirOS;
+            attribs.normalOS = normalize(attribs.hitPositionOS - center);
             reportIntersectionEXT(t, 0);
             return;
         }
     }
-
 
     attribs.debugHit = true;
     reportIntersectionEXT(10, 0);
