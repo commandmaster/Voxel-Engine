@@ -332,7 +332,6 @@ private:
     AccelerationStructure bottomLevelAccelerationStructure;
     AccelerationStructure topLevelAccelerationStructure;
 
-    AccelerationStructureManager accelerationStructureManager;
 
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
 
