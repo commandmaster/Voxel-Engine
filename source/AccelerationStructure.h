@@ -246,7 +246,7 @@ private:
 };
 
 
-class TLAS
+struct TLAS
 {
 public:
     TLAS() = default;
@@ -464,15 +464,6 @@ public:
         m_updateScratchSize = 0;
     }
 
-    VkAccelerationStructureKHR getHandle() const { return m_tlasHandle; }
-    uint64_t getDeviceAddress() const { return m_deviceAddress; }
-    uint32_t getCurrentInstanceCount() const { return m_instanceCount; }
-    uint32_t getMaxInstanceCount() const { return m_maxInstances; }
-
-    Buffer<BufferType::HostVisible>& getInstanceBuffer() { return m_instanceBuffer; }
-    Buffer<BufferType::DeviceLocal>& getBuffer() { return m_buffer; }
-
-private:
     VkAccelerationStructureKHR m_tlasHandle = VK_NULL_HANDLE;
     uint64_t m_deviceAddress = 0;
     Buffer<BufferType::DeviceLocal> m_buffer;
@@ -489,6 +480,8 @@ private:
     VkDeviceSize m_updateScratchSize = 0;
 };
 
+using InstanceIndex = uint32_t;
+using BlasIndex = uint32_t;
 
 class AccelerationStructureManager
 {
@@ -501,11 +494,12 @@ public:
     AccelerationStructureManager(AccelerationStructureManager&&) = delete;
     AccelerationStructureManager& operator=(AccelerationStructureManager&&) = delete;
 
-    uint32_t addBLAS(const VkAabbPositionsKHR* initialAABBData, uint32_t aabbDataSize);
+    BlasIndex addBlas(const VkAabbPositionsKHR* initialAABBData, uint32_t aabbDataSize);
+    InstanceIndex instantiateBlas(BlasIndex index, VkTransformMatrixKHR transform);
 
     void initTLAS();
 
-    void moveBLAS(uint32_t index, VkTransformMatrixKHR transform);
+    void moveBlasInstance(uint32_t index, VkTransformMatrixKHR transform);
     void updateTLAS(VkCommandBuffer cmd);
 
     void destroy()
@@ -521,18 +515,19 @@ public:
 		m_tlas.destroy();
     }
 
-    VkAccelerationStructureKHR getTLASHandle() const { return m_tlas.getHandle(); }
+    VkAccelerationStructureKHR getTLASHandle() const { return m_tlas.m_tlasHandle; }
 
 
 private:
     std::vector<BLAS> m_blases;
+    std::vector<VkAccelerationStructureInstanceKHR> m_instances;
     std::vector<VkTransformMatrixKHR> m_transformMatrices;
 
     TLAS m_tlas; 
 };
 
 
-inline uint32_t AccelerationStructureManager::addBLAS(const VkAabbPositionsKHR* initialAABBData, uint32_t aabbDataSize) 
+inline BlasIndex AccelerationStructureManager::addBlas(const VkAabbPositionsKHR* initialAABBData, uint32_t aabbDataSize) 
 {
 		m_blases.emplace_back();
         try 
@@ -544,19 +539,13 @@ inline uint32_t AccelerationStructureManager::addBLAS(const VkAabbPositionsKHR* 
             m_blases.pop_back();
             throw;
         }
-
-        m_transformMatrices.emplace_back();
-        auto& matrix = m_transformMatrices.back();
-        memset(&matrix, 0, sizeof(VkTransformMatrixKHR));
-        matrix.matrix[0][0] = 1.0f;
-        matrix.matrix[1][1] = 1.0f;
-        matrix.matrix[2][2] = 1.0f;
-        return static_cast<uint32_t>(m_blases.size() - 1);
+        
+        return static_cast<BlasIndex>(m_blases.size() - 1);
 }
 
 inline void AccelerationStructureManager::initTLAS() 
 {
-    std::vector<VkAccelerationStructureInstanceKHR> instances;
+    m_instances.clear();
 
     uint64_t primitiveCount = 0;
 
@@ -570,13 +559,13 @@ inline void AccelerationStructureManager::initTLAS()
         instance.instanceShaderBindingTableRecordOffset = 0;
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
         instance.accelerationStructureReference = m_blases[i].getDeviceAddress();
-        instances.push_back(instance);
+        m_instances.push_back(instance);
         primitiveCount += m_blases[i].getPrimitiveCount();
     }
 
-    if (!instances.empty()) 
+    if (!m_instances.empty()) 
     {
-        m_tlas.init(instances.data(), static_cast<uint32_t>(instances.size()), static_cast<uint32_t>(instances.size()));
+        m_tlas.init(m_instances.data(), static_cast<uint32_t>(m_instances.size()), static_cast<uint32_t>(m_instances.size()));
     } 
     else 
     {
@@ -584,28 +573,63 @@ inline void AccelerationStructureManager::initTLAS()
     }
 }
 
-inline void AccelerationStructureManager::moveBLAS(uint32_t index, VkTransformMatrixKHR vkTransform) 
+inline void AccelerationStructureManager::moveBlasInstance(uint32_t index, VkTransformMatrixKHR vkTransform) 
 {
     if (index >= m_blases.size()) {
-        throw std::runtime_error("MoveBLAS: BLAS index out of range.");
+        LOG_ERROR("MoveBLAS: BLAS index out of range.");
+        return;
     }
 
     m_transformMatrices[index] = vkTransform;
 
     size_t instanceIndex = index;
-    if (instanceIndex >= m_tlas.getMaxInstanceCount()) 
+    if (instanceIndex >= m_tlas.m_maxInstances) 
     {
-        throw std::runtime_error("moveBLAS: Instance index exceeds TLAS capacity.");
+        LOG_ERROR("moveBLAS: Instance index exceeds TLAS capacity.");
+        return;
     }
 
-    VkAccelerationStructureInstanceKHR* instances = static_cast<VkAccelerationStructureInstanceKHR*>(m_tlas.getInstanceBuffer().getMappedMemory());
+    VkAccelerationStructureInstanceKHR* instances = static_cast<VkAccelerationStructureInstanceKHR*>(m_tlas.m_instanceBuffer.getMappedMemory());
     instances[instanceIndex].transform = vkTransform;
+}
+
+inline InstanceIndex AccelerationStructureManager::instantiateBlas(BlasIndex index, VkTransformMatrixKHR transform)
+{
+    if (index >= m_blases.size()) 
+    {
+        LOG_ERROR("instantiateBLAS: BLAS index out of range.");
+        return 0;
+    }
+
+    m_instances.emplace_back();
+    auto& instance = m_instances.back();
+    instance.transform = transform;
+    instance.instanceCustomIndex = static_cast<uint32_t>(m_instances.size());
+    instance.mask = 0xFF;
+    instance.instanceShaderBindingTableRecordOffset = 0;
+    instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
+    instance.accelerationStructureReference = m_blases[index].getDeviceAddress();
+
+    m_transformMatrices.emplace_back();
+    auto& matrix = m_transformMatrices.back();
+    memset(&matrix, 0, sizeof(VkTransformMatrixKHR));
+    matrix.matrix[0][0] = 1.0f;
+    matrix.matrix[1][1] = 1.0f;
+    matrix.matrix[2][2] = 1.0f;
+
+    return static_cast<InstanceIndex>(m_instances.size() - 1);
 }
 
 inline void AccelerationStructureManager::updateTLAS(VkCommandBuffer cmd)
 {
-    PERF_SCOPE("Move BLAS");
-    VkAccelerationStructureInstanceKHR* instances = static_cast<VkAccelerationStructureInstanceKHR*>(m_tlas.getInstanceBuffer().getMappedMemory());
-    m_tlas.build(cmd, instances, m_tlas.getCurrentInstanceCount(), true);
+    PERF_SCOPE("Update TLAS");
+
+    if (m_instances.empty())
+    {
+        LOG_ERROR("UpdateTLAS: No instances to update.");
+        return;
+    }
+
+    m_tlas.build(cmd, m_instances.data(), static_cast<uint32_t>(m_instances.size()), true);
 }
 

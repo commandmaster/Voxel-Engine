@@ -412,11 +412,19 @@ void VoxelEngine::createBLAS()
         aabbVec.push_back(aabb);
     }
 
-	uint32_t currentBlasIndexInDynamicList = accelerationStructureManager.addBLAS(aabbVec.data(), sizeof(VkAabbPositionsKHR) * aabbVec.size());
+	accelerationStructureManager.addBlas(aabbVec.data(), sizeof(VkAabbPositionsKHR) * aabbVec.size());
+
+    VkTransformMatrixKHR transform = {
+        1.0f, 0.0f, 0.0f, 0.0f,
+        0.0f, 1.0f, 0.0f, 0.0f,
+        0.0f, 0.0f, 1.0f, 0.0f,
+    };
+
+   uint32_t instanceIndex = accelerationStructureManager.instantiateBlas(0, transform);
 
 	if (firstDynamicBlasIndex == static_cast<uint32_t>(-1))
 	{
-		 firstDynamicBlasIndex = currentBlasIndexInDynamicList;
+		 firstDynamicBlasIndex = instanceIndex;
 	}
 
     if (firstDynamicBlasIndex != static_cast<uint32_t>(-1)) 
