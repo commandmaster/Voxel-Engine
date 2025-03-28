@@ -15,14 +15,7 @@
 #include <memory>
 #include <iostream>
 
-enum class BlasType
-{
-	STATIC,
-	DYNAMIC
-};
 
-
-template<BlasType Type>
 class BLAS
 {
 public:
@@ -91,9 +84,6 @@ public:
 		m_buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
 		m_buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 		m_buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR;
-		if constexpr (Type == BlasType::DYNAMIC) {
-			//m_buildInfo.flags |= VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
-		}
 		m_buildInfo.geometryCount = 1;
 		m_buildInfo.pGeometries = &m_geometry;
 
@@ -106,7 +96,8 @@ public:
 			&m_primitiveCount,
 			&buildSizesInfo);
 
-        if (buildSizesInfo.accelerationStructureSize == 0) {
+        if (buildSizesInfo.accelerationStructureSize == 0) 
+        {
             throw std::runtime_error("Acceleration structure size query returned 0.");
         }
         m_buildScratchSize = buildSizesInfo.buildScratchSize;
@@ -150,10 +141,10 @@ public:
 		addressInfo.accelerationStructure = m_blasHandle;
 		m_deviceAddress = VulkanContext::vkGetAccelerationStructureDeviceAddressKHR(VulkanContext::device, &addressInfo);
 
-        build(initialAABBData, aabbDataSize, false);
+        build(initialAABBData, aabbDataSize);
 	}
 
-	void build(const VkAabbPositionsKHR* aabbData, uint32_t aabbDataSize, bool update = false)
+	void build(const VkAabbPositionsKHR* aabbData, uint32_t aabbDataSize)
 	{
         if (m_blasHandle == VK_NULL_HANDLE) {
             throw std::runtime_error("BLAS must be initialized before building.");
@@ -165,24 +156,13 @@ public:
             throw std::runtime_error("AABB data size in build() does not match size during init().");
         }
 
-        bool performUpdate = update;
-        if constexpr (Type == BlasType::STATIC) {
-            if (performUpdate) {
-                 performUpdate = false;
-            }
-        } else {
-             if (performUpdate && m_buildInfo.srcAccelerationStructure == VK_NULL_HANDLE) {
-                performUpdate = false;
-             }
-        }
-
 		m_aabbBuffer.updateData(VulkanContext::vmaAllocator, aabbData, aabbDataSize);
 
 		VkAccelerationStructureBuildGeometryInfoKHR buildInfo = m_buildInfo;
-		buildInfo.mode = performUpdate ? VK_BUILD_ACCELERATION_STRUCTURE_MODE_UPDATE_KHR : VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
+		buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
 		buildInfo.dstAccelerationStructure = m_blasHandle;
         buildInfo.scratchData.deviceAddress = m_scratchBuffer.deviceAddress;
-        buildInfo.srcAccelerationStructure = performUpdate ? m_blasHandle : VK_NULL_HANDLE;
+        buildInfo.srcAccelerationStructure = VK_NULL_HANDLE;
         buildInfo.pGeometries = &m_geometry;
 
 
@@ -225,12 +205,6 @@ public:
 
 
 		VulkanContext::SubmitCommandBuffer(cmd, VulkanContext::graphicsQueue, true);
-
-        if constexpr (Type == BlasType::DYNAMIC) {
-            if (!performUpdate) {
-                 m_buildInfo.srcAccelerationStructure = m_blasHandle;
-            }
-        }
 	}
 
 	void destroy()
@@ -527,7 +501,6 @@ public:
     AccelerationStructureManager(AccelerationStructureManager&&) = delete;
     AccelerationStructureManager& operator=(AccelerationStructureManager&&) = delete;
 
-    template<BlasType Type>
     uint32_t addBLAS(const VkAabbPositionsKHR* initialAABBData, uint32_t aabbDataSize);
 
     void initTLAS();
@@ -537,20 +510,13 @@ public:
 
     void destroy()
     {
-        for (auto& blas : m_staticBlases) 
+        for (auto& blas : m_blases) 
         {
 			blas.destroy();
 		}
 
-		m_staticBlases.clear();
-		m_staticTransformMatrices.clear();
-
-		for (auto& blas : m_dynamicBlases) 
-        {
-			blas.destroy();
-		}
-		m_dynamicBlases.clear();
-		m_dynamicTransformMatrices.clear();
+		m_blases.clear();
+		m_transformMatrices.clear();
 
 		m_tlas.destroy();
     }
@@ -559,62 +525,33 @@ public:
 
 
 private:
-    std::vector<BLAS<BlasType::STATIC>> m_staticBlases;
-    std::vector<BLAS<BlasType::DYNAMIC>> m_dynamicBlases;
-
-    std::vector<VkTransformMatrixKHR> m_dynamicTransformMatrices;
-    std::vector<VkTransformMatrixKHR> m_staticTransformMatrices;
+    std::vector<BLAS> m_blases;
+    std::vector<VkTransformMatrixKHR> m_transformMatrices;
 
     TLAS m_tlas; 
 };
 
 
-template<BlasType Type>
 inline uint32_t AccelerationStructureManager::addBLAS(const VkAabbPositionsKHR* initialAABBData, uint32_t aabbDataSize) 
 {
-    if constexpr (Type == BlasType::STATIC) 
-    {
-        m_staticBlases.emplace_back();
+		m_blases.emplace_back();
         try 
         {
-            m_staticBlases.back().init(initialAABBData, aabbDataSize);
+            m_blases.back().init(initialAABBData, aabbDataSize);
         } 
         catch (...) 
         {
-            m_staticBlases.pop_back();
+            m_blases.pop_back();
             throw;
         }
 
-        m_staticTransformMatrices.emplace_back();
-        auto& matrix = m_staticTransformMatrices.back();
+        m_transformMatrices.emplace_back();
+        auto& matrix = m_transformMatrices.back();
         memset(&matrix, 0, sizeof(VkTransformMatrixKHR));
         matrix.matrix[0][0] = 1.0f;
         matrix.matrix[1][1] = 1.0f;
         matrix.matrix[2][2] = 1.0f;
-        return static_cast<uint32_t>(m_staticBlases.size() - 1);
-
-    } 
-    else 
-    {
-        m_dynamicBlases.emplace_back();
-        try 
-        {
-            m_dynamicBlases.back().init(initialAABBData, aabbDataSize);
-        } 
-        catch (...) 
-        {
-            m_dynamicBlases.pop_back();
-            throw;
-        }
-
-        m_dynamicTransformMatrices.emplace_back();
-        auto& matrix = m_dynamicTransformMatrices.back();
-        memset(&matrix, 0, sizeof(VkTransformMatrixKHR));
-        matrix.matrix[0][0] = 1.0f;
-        matrix.matrix[1][1] = 1.0f;
-        matrix.matrix[2][2] = 1.0f;
-        return static_cast<uint32_t>(m_dynamicBlases.size() - 1);
-    }
+        return static_cast<uint32_t>(m_blases.size() - 1);
 }
 
 inline void AccelerationStructureManager::initTLAS() 
@@ -623,31 +560,18 @@ inline void AccelerationStructureManager::initTLAS()
 
     uint64_t primitiveCount = 0;
 
-    for (size_t i = 0; i < m_staticBlases.size(); ++i) 
+    for (size_t i = 0; i < m_blases.size(); ++i) 
     {
         VkAccelerationStructureInstanceKHR instance{};
-		instance.transform = m_staticTransformMatrices[i];
-        instance.instanceCustomIndex = static_cast<uint32_t>(primitiveCount);
-        instance.mask = 0xFF;
-        instance.instanceShaderBindingTableRecordOffset = 0;
-        instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-        instance.accelerationStructureReference = m_staticBlases[i].getDeviceAddress();
-        instances.push_back(instance);
-        primitiveCount += m_staticBlases[i].getPrimitiveCount();
-    }
-
-    for (size_t i = 0; i < m_dynamicBlases.size(); ++i) 
-    {
-        VkAccelerationStructureInstanceKHR instance{};
-        instance.transform = m_dynamicTransformMatrices[i];
+        instance.transform = m_transformMatrices[i];
         
         instance.instanceCustomIndex = static_cast<uint32_t>(primitiveCount);
         instance.mask = 0xFF;
         instance.instanceShaderBindingTableRecordOffset = 0;
         instance.flags = VK_GEOMETRY_INSTANCE_TRIANGLE_FACING_CULL_DISABLE_BIT_KHR;
-        instance.accelerationStructureReference = m_dynamicBlases[i].getDeviceAddress();
+        instance.accelerationStructureReference = m_blases[i].getDeviceAddress();
         instances.push_back(instance);
-        primitiveCount += m_dynamicBlases[i].getPrimitiveCount();
+        primitiveCount += m_blases[i].getPrimitiveCount();
     }
 
     if (!instances.empty()) 
@@ -662,14 +586,15 @@ inline void AccelerationStructureManager::initTLAS()
 
 inline void AccelerationStructureManager::moveBLAS(uint32_t index, VkTransformMatrixKHR vkTransform) 
 {
-    if (index >= m_dynamicBlases.size()) {
-        throw std::runtime_error("moveBLAS: Dynamic BLAS index out of range.");
+    if (index >= m_blases.size()) {
+        throw std::runtime_error("MoveBLAS: BLAS index out of range.");
     }
 
-    m_dynamicTransformMatrices[index] = vkTransform;
+    m_transformMatrices[index] = vkTransform;
 
-    size_t instanceIndex = m_staticBlases.size() + index;
-    if (instanceIndex >= m_tlas.getMaxInstanceCount()) {
+    size_t instanceIndex = index;
+    if (instanceIndex >= m_tlas.getMaxInstanceCount()) 
+    {
         throw std::runtime_error("moveBLAS: Instance index exceeds TLAS capacity.");
     }
 
@@ -684,5 +609,3 @@ inline void AccelerationStructureManager::updateTLAS(VkCommandBuffer cmd)
     m_tlas.build(cmd, instances, m_tlas.getCurrentInstanceCount(), true);
 }
 
-template uint32_t AccelerationStructureManager::addBLAS<BlasType::STATIC>(const VkAabbPositionsKHR*, uint32_t);
-template uint32_t AccelerationStructureManager::addBLAS<BlasType::DYNAMIC>(const VkAabbPositionsKHR*, uint32_t);
