@@ -377,16 +377,18 @@ void VoxelEngine::createBLAS()
 {
     std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
-    auto randFloat = [](float min, float max) {
+    auto randFloat = [](float min, float max)
+        {
         float random = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
         return min + random * (max - min);
     };
 
-    const int numRandomSpheres = 10000; 
-    for (int i = 0; i < numRandomSpheres; ++i) {
-        float x = randFloat(-500.0f, 500.0f);
-        float y = randFloat(-500.0f, 500.0f);
-        float z = randFloat(-500.0f, 500.0f);
+    const int numRandomSpheres = 500000; 
+    for (int i = 0; i < numRandomSpheres; ++i)
+    {
+        float x = randFloat(-2500.0f, 2500.0f);
+        float y = randFloat(-2500.0f, 2500.0f);
+        float z = randFloat(-2500.0f, 2500.0f);
         float radius = randFloat(0.5f, 6.0f);
         spheres.push_back({ {x, y, z, radius} });
     }
@@ -843,13 +845,13 @@ void VoxelEngine::createSyncObjects()
 void VoxelEngine::createSphereBuffer()
 {
     VkDeviceSize bufferSize = sizeof(Sphere) * spheres.size();
-    sphereBuffer.create(
-        VulkanContext::vmaAllocator, VulkanContext::device,
-        bufferSize,
-        VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT,
-        ManagedBuffer::BufferType::HostVisible
-    );
-    sphereBuffer.updateData(VulkanContext::vmaAllocator, spheres.data(), bufferSize);
+    sphereBuffer.create(VulkanContext::vmaAllocator, VulkanContext::device, bufferSize, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanContext::vkGetBufferDeviceAddressKHR);
+
+    sphereBuffer.uploadData(VulkanContext::vmaAllocator, VulkanContext::device, VulkanContext::graphicsQueue, spheres.data(), bufferSize);
+    
+
+
+
 }
 
 void VoxelEngine::recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)

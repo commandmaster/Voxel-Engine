@@ -325,7 +325,7 @@ namespace VulkanContext
 		return details;
 	}
 
-	VkCommandBuffer CreateCommandBuffer(VkCommandBufferLevel level, bool singleUse)
+	VkCommandBuffer CreateCommandBuffer(VkCommandBufferLevel level, bool singleUse, bool autoBegin)
 	{
         VkCommandBufferAllocateInfo allocInfo{};
         allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
@@ -341,7 +341,10 @@ namespace VulkanContext
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
         beginInfo.flags = singleUse ? VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT : 0;
 
-        VK_ERROR_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+		if (autoBegin)
+		{
+			VK_ERROR_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo));
+		}
 
         return commandBuffer;
 	}

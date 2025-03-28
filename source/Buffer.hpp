@@ -210,7 +210,6 @@ public:
     void uploadData(
         VmaAllocator allocator,
         VkDevice device,
-        VkCommandBuffer commandBuffer,
         VkQueue queue,
         const void* data,
         VkDeviceSize dataSize,
@@ -326,13 +325,13 @@ template<>
 inline void Buffer<BufferType::HostVisible>::uploadData(
     VmaAllocator allocator,
     VkDevice device,
-    VkCommandBuffer commandBuffer,
     VkQueue queue,
     const void* data,
     VkDeviceSize dataSize,
     VkDeviceSize offset
 )
 {
+    VkCommandBuffer commandBuffer = VulkanContext::CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
     // For host-visible buffers, directly update memory
     updateData(allocator, data, dataSize, offset);
     
@@ -356,6 +355,8 @@ inline void Buffer<BufferType::HostVisible>::uploadData(
         1, &barrier,
         0, nullptr
     );
+
+    VulkanContext::SubmitCommandBuffer(commandBuffer, queue, true);
 }
 
 template<>
@@ -423,13 +424,14 @@ template<>
 inline void Buffer<BufferType::DeviceLocal>::uploadData(
     VmaAllocator allocator,
     VkDevice device,
-    VkCommandBuffer commandBuffer,
     VkQueue queue,
     const void* data,
     VkDeviceSize dataSize,
     VkDeviceSize offset
 )
 {
+    VkCommandBuffer commandBuffer = VulkanContext::CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+
     if (data == nullptr)
     {
         LOG_ERROR("Cannot upload from null data pointer");
@@ -481,11 +483,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
         vmaUnmapMemory(allocator, stagingAllocation);
     }
     
-    VkCommandBufferBeginInfo beginInfo{};
-    beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
-    beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
     
-    result = vkBeginCommandBuffer(commandBuffer, &beginInfo);
     if (result != VK_SUCCESS)
     {
         vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
@@ -538,37 +536,7 @@ inline void Buffer<BufferType::DeviceLocal>::uploadData(
         0, nullptr
     );
     
-    result = vkEndCommandBuffer(commandBuffer);
-    if (result != VK_SUCCESS)
-    {
-        vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-        LOG_ERROR("Failed to end command buffer: " + vkResultToString(result));
-    }
-    
-    VkSubmitInfo submitInfo{};
-    submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers = &commandBuffer;
-    
-    VkFence fence = BufferUtils::FencePool::getInstance().acquireFence(device);
-    
-    result = vkQueueSubmit(queue, 1, &submitInfo, fence);
-    if (result != VK_SUCCESS)
-    {
-        vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-        BufferUtils::FencePool::getInstance().releaseFence(fence);
-        LOG_ERROR("Failed to submit queue: " + vkResultToString(result));
-    }
-    
-    result = vkWaitForFences(device, 1, &fence, VK_TRUE, UINT64_MAX);
-    
-    BufferUtils::FencePool::getInstance().releaseFence(fence);
-    
-    if (result != VK_SUCCESS)
-    {
-        vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
-        LOG_ERROR("Failed to wait for fence: " + vkResultToString(result));
-    }
+    VulkanContext::SubmitCommandBuffer(commandBuffer, queue, true);
     
     vmaDestroyBuffer(allocator, stagingBuffer, stagingAllocation);
 }

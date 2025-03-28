@@ -91,7 +91,7 @@ private:
 
 	struct Constants 
     {
-	    alignas(16) glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, 1.0f, 1.0f));
+	    alignas(16) glm::vec3 lightDir = glm::normalize(glm::vec3(1.0f, -1.0f, -1.0f));
 		alignas(16) glm::vec3 lightColor = glm::vec3(1.0f, 1.0f, 1.0f);
 		alignas(16) glm::vec3 ambientColor = glm::vec3(0.1f, 0.1f, 0.1f);	
     } constants;
@@ -279,7 +279,7 @@ private:
 
     const uint32_t MAX_FRAMES_IN_FLIGHT = 2;
 
-    const float MOVEMENT_SENS = 1.f;
+    const float MOVEMENT_SENS = 22.f;
 
     uint32_t currentFrame = 0;
 
@@ -342,7 +342,7 @@ private:
 		{ {-1, -1, -1, 0.8f} }, 
 		{ {5, 5, 5, 3.0f} } 
 	};    
-    ManagedBuffer sphereBuffer;
+    Buffer<BufferType::DeviceLocal> sphereBuffer;
     
     static void framebufferResizeCallback(GLFWwindow* window, int width, int height)
     {
