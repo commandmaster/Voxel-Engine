@@ -320,7 +320,7 @@ public:
         m_buildInfo = {};
         m_buildInfo.sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_BUILD_GEOMETRY_INFO_KHR;
         m_buildInfo.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
-        m_buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_TRACE_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
+        m_buildInfo.flags = VK_BUILD_ACCELERATION_STRUCTURE_PREFER_FAST_BUILD_BIT_KHR | VK_BUILD_ACCELERATION_STRUCTURE_ALLOW_UPDATE_BIT_KHR;
         m_buildInfo.geometryCount = 1;
         m_buildInfo.pGeometries = &m_geometry;
 
@@ -377,14 +377,22 @@ public:
         addressInfo.accelerationStructure = m_tlasHandle;
         m_deviceAddress = VulkanContext::vkGetAccelerationStructureDeviceAddressKHR(VulkanContext::device, &addressInfo);
 
-        if (instanceCount > 0) {
-            build(initialInstanceData, instanceCount, false);
-        } else {
+        if (instanceCount > 0) 
+        {
+            VkCommandBuffer cmd = VulkanContext::CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
+            build(cmd, initialInstanceData, instanceCount, false);
+            VulkanContext::SubmitCommandBuffer(cmd, VulkanContext::graphicsQueue, true);
+        }
+        else 
+        {
             m_instanceCount = 0;
         }
     }
 
-    void build(const VkAccelerationStructureInstanceKHR* instanceData, uint32_t instanceCount, bool update = false)
+    void build(VkCommandBuffer cmd, 
+               const VkAccelerationStructureInstanceKHR* instanceData,
+               uint32_t instanceCount,
+               bool update = false)
     {
         if (m_tlasHandle == VK_NULL_HANDLE) 
         {
@@ -402,13 +410,13 @@ public:
         bool performUpdate = update;
         if (performUpdate && m_buildInfo.srcAccelerationStructure == VK_NULL_HANDLE) 
         {
-            performUpdate = false;
+            performUpdate = false; 
         }
 
         VkDeviceSize dataSize = sizeof(VkAccelerationStructureInstanceKHR) * instanceCount;
         if (dataSize > 0) 
         {
-             m_instanceBuffer.updateData(VulkanContext::vmaAllocator, instanceData, dataSize);
+            m_instanceBuffer.updateData(VulkanContext::vmaAllocator, instanceData, dataSize);
         }
 
         m_instanceCount = instanceCount;
@@ -428,11 +436,10 @@ public:
 
         const VkAccelerationStructureBuildRangeInfoKHR* pBuildRangeInfo = &buildRangeInfo;
 
-        VkCommandBuffer cmd = VulkanContext::CreateCommandBuffer(VK_COMMAND_BUFFER_LEVEL_PRIMARY, true);
 
         VkMemoryBarrier memoryBarrier = { VK_STRUCTURE_TYPE_MEMORY_BARRIER };
         memoryBarrier.srcAccessMask = VK_ACCESS_HOST_WRITE_BIT;
-        memoryBarrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+        memoryBarrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
         vkCmdPipelineBarrier(
             cmd,
             VK_PIPELINE_STAGE_HOST_BIT,
@@ -456,8 +463,6 @@ public:
             0, nullptr,
             0, nullptr
         );
-
-        VulkanContext::SubmitCommandBuffer(cmd, VulkanContext::graphicsQueue, true);
 
         if (!performUpdate) 
         {
@@ -528,7 +533,7 @@ public:
     void initTLAS();
 
     void moveBLAS(uint32_t index, VkTransformMatrixKHR transform);
-    void updateTLAS();
+    void updateTLAS(VkCommandBuffer cmd);
 
     void destroy()
     {
@@ -672,11 +677,11 @@ inline void AccelerationStructureManager::moveBLAS(uint32_t index, VkTransformMa
     instances[instanceIndex].transform = vkTransform;
 }
 
-inline void AccelerationStructureManager::updateTLAS()
+inline void AccelerationStructureManager::updateTLAS(VkCommandBuffer cmd)
 {
     PERF_SCOPE("Move BLAS");
     VkAccelerationStructureInstanceKHR* instances = static_cast<VkAccelerationStructureInstanceKHR*>(m_tlas.getInstanceBuffer().getMappedMemory());
-    m_tlas.build(instances, m_tlas.getCurrentInstanceCount(), true);
+    m_tlas.build(cmd, instances, m_tlas.getCurrentInstanceCount(), true);
 }
 
 template uint32_t AccelerationStructureManager::addBLAS<BlasType::STATIC>(const VkAabbPositionsKHR*, uint32_t);

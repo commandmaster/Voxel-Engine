@@ -36,6 +36,7 @@
 #include <limits>
 #include <algorithm> 
 #include <array>
+#include <random>
 
 #ifdef NDEBUG
 #pragma comment(lib, "shaderc_combined.lib")
@@ -417,7 +418,6 @@ private:
 		createCommandBuffers();
 		createStorageImages();
 		createCamera();
-		createSphereBuffer();
 		createUniformBuffers();
 		createBLAS();
 		createTLAS();
@@ -492,7 +492,6 @@ private:
             };
 
             accelerationStructureManager.moveBLAS(movingIndex, transform);
-            accelerationStructureManager.updateTLAS();
 
 			drawFrameRT();
 			

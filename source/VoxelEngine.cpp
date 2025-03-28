@@ -3,6 +3,7 @@
 #define VMA_IMPLEMENTATION
 #include "vma/vk_mem_alloc.h"
 
+
 std::string Shader::readShaderFile(const std::string& path)
 {
 	std::ifstream file(path);
@@ -374,13 +375,30 @@ void VoxelEngine::createStorageImages()
 
 void VoxelEngine::createBLAS()
 {
-    std::vector<VkAabbPositionsKHR> aabbs;
-    for (int i = 0; i < spheres.size(); ++i) 
-    {
-        auto& sphere = spheres[i];
+    std::srand(static_cast<unsigned int>(std::time(nullptr)));
 
-        VkAabbPositionsKHR aabb = 
-        {
+    auto randFloat = [](float min, float max) {
+        float random = static_cast<float>(std::rand()) / static_cast<float>(RAND_MAX);
+        return min + random * (max - min);
+    };
+
+    const int numRandomSpheres = 10000; 
+    for (int i = 0; i < numRandomSpheres; ++i) {
+        float x = randFloat(-500.0f, 500.0f);
+        float y = randFloat(-500.0f, 500.0f);
+        float z = randFloat(-500.0f, 500.0f);
+        float radius = randFloat(0.5f, 6.0f);
+        spheres.push_back({ {x, y, z, radius} });
+    }
+
+    uint32_t firstDynamicBlasIndex = static_cast<uint32_t>(-1); 
+
+    std::vector<VkAabbPositionsKHR> aabbVec;
+    for (size_t i = 0; i < spheres.size(); ++i)
+    {
+        const auto& sphere = spheres[i];
+
+        VkAabbPositionsKHR aabb = {
             sphere.positionRadius.x - sphere.positionRadius.w,
             sphere.positionRadius.y - sphere.positionRadius.w,
             sphere.positionRadius.z - sphere.positionRadius.w,
@@ -388,17 +406,27 @@ void VoxelEngine::createBLAS()
             sphere.positionRadius.y + sphere.positionRadius.w,
             sphere.positionRadius.z + sphere.positionRadius.w,
         };
-        aabbs.push_back(aabb);
 
-        if (i % 2 == 0)
-        {
-			movingIndex = accelerationStructureManager.addBLAS<BlasType::DYNAMIC>(aabbs.data(), sizeof(VkAabbPositionsKHR) * aabbs.size());
-            aabbs.clear();
-        }
-
+        aabbVec.push_back(aabb);
     }
-    
-    if (!aabbs.empty()) accelerationStructureManager.addBLAS<BlasType::DYNAMIC>(aabbs.data(), sizeof(VkAabbPositionsKHR) * aabbs.size());
+
+	uint32_t currentBlasIndexInDynamicList = accelerationStructureManager.addBLAS<BlasType::DYNAMIC>(aabbVec.data(), sizeof(VkAabbPositionsKHR) * aabbVec.size());
+
+	if (firstDynamicBlasIndex == static_cast<uint32_t>(-1))
+	{
+		 firstDynamicBlasIndex = currentBlasIndexInDynamicList;
+	}
+
+    if (firstDynamicBlasIndex != static_cast<uint32_t>(-1)) 
+    {
+        movingIndex = firstDynamicBlasIndex; 
+    } 
+    else if (!spheres.empty()) 
+    {
+        movingIndex = 0; 
+    }
+
+    createSphereBuffer();    
 }
 
 
@@ -826,6 +854,8 @@ void VoxelEngine::createSphereBuffer()
 
 void VoxelEngine::recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)
 {	
+    accelerationStructureManager.updateTLAS(commandBuffer);
+
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, rtPipeline);
     
     // Bind descriptor sets
