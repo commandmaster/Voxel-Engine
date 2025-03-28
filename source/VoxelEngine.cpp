@@ -392,7 +392,7 @@ void VoxelEngine::createBLAS()
 
         if (i % 2 == 0)
         {
-			accelerationStructureManager.addBLAS<BlasType::DYNAMIC>(aabbs.data(), sizeof(VkAabbPositionsKHR) * aabbs.size());
+			movingIndex = accelerationStructureManager.addBLAS<BlasType::DYNAMIC>(aabbs.data(), sizeof(VkAabbPositionsKHR) * aabbs.size());
             aabbs.clear();
         }
 

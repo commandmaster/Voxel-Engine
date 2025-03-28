@@ -7,6 +7,7 @@
 
 #include "Buffer.hpp"
 #include "VulkanContext.hpp"
+#include "PerformanceTimer.hpp"
 
 #include <vector>
 #include <algorithm>
@@ -526,7 +527,8 @@ public:
 
     void initTLAS();
 
-    void moveBLAS(uint32_t index, const glm::mat4x3& transform);
+    void moveBLAS(uint32_t index, VkTransformMatrixKHR transform);
+    void updateTLAS();
 
     void destroy()
     {
@@ -550,12 +552,13 @@ public:
 
     VkAccelerationStructureKHR getTLASHandle() const { return m_tlas.getHandle(); }
 
+
 private:
     std::vector<BLAS<BlasType::STATIC>> m_staticBlases;
-    std::vector<VkTransformMatrixKHR> m_staticTransformMatrices;
-
     std::vector<BLAS<BlasType::DYNAMIC>> m_dynamicBlases;
+
     std::vector<VkTransformMatrixKHR> m_dynamicTransformMatrices;
+    std::vector<VkTransformMatrixKHR> m_staticTransformMatrices;
 
     TLAS m_tlas; 
 };
@@ -652,17 +655,10 @@ inline void AccelerationStructureManager::initTLAS()
     }
 }
 
-inline void AccelerationStructureManager::moveBLAS(uint32_t index, const glm::mat4x3& transform) {
+inline void AccelerationStructureManager::moveBLAS(uint32_t index, VkTransformMatrixKHR vkTransform) 
+{
     if (index >= m_dynamicBlases.size()) {
         throw std::runtime_error("moveBLAS: Dynamic BLAS index out of range.");
-    }
-
-    VkTransformMatrixKHR vkTransform{};
-    const float* src = glm::value_ptr(transform);
-    for (int row = 0; row < 3; ++row) {
-        for (int col = 0; col < 4; ++col) {
-            vkTransform.matrix[row][col] = src[col * 3 + row];
-        }
     }
 
     m_dynamicTransformMatrices[index] = vkTransform;
@@ -674,7 +670,12 @@ inline void AccelerationStructureManager::moveBLAS(uint32_t index, const glm::ma
 
     VkAccelerationStructureInstanceKHR* instances = static_cast<VkAccelerationStructureInstanceKHR*>(m_tlas.getInstanceBuffer().getMappedMemory());
     instances[instanceIndex].transform = vkTransform;
+}
 
+inline void AccelerationStructureManager::updateTLAS()
+{
+    PERF_SCOPE("Move BLAS");
+    VkAccelerationStructureInstanceKHR* instances = static_cast<VkAccelerationStructureInstanceKHR*>(m_tlas.getInstanceBuffer().getMappedMemory());
     m_tlas.build(instances, m_tlas.getCurrentInstanceCount(), true);
 }
 

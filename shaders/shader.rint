@@ -59,6 +59,6 @@ void main() {
         }
     }
 
-    attribs.debugHit = true;
-    reportIntersectionEXT(10, 0);
+    //attribs.debugHit = true;
+    //reportIntersectionEXT(10, 0);
 }

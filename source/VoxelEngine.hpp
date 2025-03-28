@@ -19,6 +19,7 @@
 #include "MemoryClasses.hpp"
 #include "AccelerationStructure.h"
 #include "Buffer.hpp"
+#include "PerformanceTimer.hpp"
 
 #include <iostream>
 #include <fstream>
@@ -322,14 +323,8 @@ private:
     std::vector<VkDescriptorSet> descriptorSetsRT;
 	VkDescriptorSetLayout descriptorSetLayoutRT = VK_NULL_HANDLE;
 
-    struct AccelerationStructure
-    {
-        VkAccelerationStructureKHR handle = VK_NULL_HANDLE;
-        uint64_t deviceAddress;
-        Buffer<BufferType::DeviceLocal> buffer;
-    };
-
     AccelerationStructureManager accelerationStructureManager;
+    uint32_t movingIndex = 0;
 
     std::vector<VkRayTracingShaderGroupCreateInfoKHR> shaderGroups{};
 
@@ -382,8 +377,6 @@ private:
 	}
 
     void createStorageImages();
-
-    void setupAccelerationStructures();
 
     void createBLAS();
 
@@ -478,11 +471,29 @@ private:
 				ImGui::Text("FPS: %.1f", fps);
 				ImGui::Text("Frame Time: %.2f micro seconds", averageFrameTime);
 				ImGui::Text("Frame Count: %d", frameCount);
+
+                for (const auto& [key, value] : PerformanceTimer::getInstance().perfStats)
+                {
+                    ImGui::Text("%s: %.2f micro seconds", key.c_str(), value);
+                }
+
 				ImGui::End();
 			}
 			
 			ImGui::ShowDemoWindow();
 			ImGui::Render();
+
+            float time = (float)glfwGetTime();
+            VkTransformMatrixKHR transform =
+            {
+               1.0f, 0.0f, 0.0f, 0.0f,
+			   0.0f, 1.0f, 0.0f, sin(time) * 3.f,
+			   0.0f, 0.0f, 1.0f, 0.0f,
+            };
+
+            accelerationStructureManager.moveBLAS(movingIndex, transform);
+            accelerationStructureManager.updateTLAS();
+
 			drawFrameRT();
 			
 			frameTimer.stop();
