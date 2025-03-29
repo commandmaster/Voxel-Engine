@@ -56,7 +56,7 @@ add_library(imgui STATIC
     ${imgui_SOURCE_DIR}/backends/imgui_impl_glfw.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_vulkan.cpp
     ${SOURCE_FILES}
- "source/Multithreading.h")
+ "source/Multithreading.h" "source/World.h" "source/World.cpp")
 
 target_include_directories(imgui PUBLIC
     ${imgui_SOURCE_DIR}
@@ -75,7 +75,7 @@ include_directories(${glm_SOURCE_DIR})
 
 target_link_libraries(imgui PRIVATE glfw)
 
-add_executable(VoxelEngine ${SOURCE_FILES} "source/Multithreading.h")
+add_executable(VoxelEngine ${SOURCE_FILES} "source/Multithreading.h" "source/World.h" "source/World.cpp")
 set_property(TARGET VoxelEngine PROPERTY CXX_STANDARD 20)
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")

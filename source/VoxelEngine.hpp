@@ -448,6 +448,9 @@ private:
 
         float dt = 0;
 		
+
+
+		float angle = 0.0f;
 		while (!glfwWindowShouldClose(window)) {
 			frameTimer.start();
 			
@@ -461,7 +464,8 @@ private:
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();
 			
-			if (frameTimes.size() > 0) {
+			if (frameTimes.size() > 0) 
+            {
 				double averageFrameTime = accumulation / frameTimes.size();
 				double fps = 1000000.0 / averageFrameTime; // Assuming milliseconds
 				
@@ -476,19 +480,29 @@ private:
                 {
                     ImGui::Text("%s: %.2f micro seconds", key.c_str(), value);
                 }
+                ImGui::Text("Sphere Count: %d", spheres.size());
 
 				ImGui::End();
 			}
+
+            ImGui::Begin("Matrix Controls");
+            ImGui::SliderFloat("Angle", &angle, 0.0f, 90.f, "%.2f");
+            ImGui::End();
+
+
 			
 			ImGui::ShowDemoWindow();
 			ImGui::Render();
 
             float time = (float)glfwGetTime();
+
+            float degToRad = glm::pi<float>() / 180.0f;
+
             VkTransformMatrixKHR transform =
             {
                1.0f, 0.0f, 0.0f, 0.0f,
-			   0.0f, 1.0f, 0.0f, sin(time) * 3.f,
-			   0.0f, 0.0f, 1.0f, 0.0f,
+			   0.0f, cos(angle * degToRad), -sin(angle * degToRad), 0.0f,
+			   0.0f, sin(angle * degToRad), cos(angle * degToRad), 0.0f,
             };
 
             accelerationStructureManager.moveBlasInstance(movingIndex, transform);

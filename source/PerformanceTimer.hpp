@@ -8,6 +8,7 @@
 #include <memory>
 
 #define ENABLE_TIMING
+//#define ENABLE_PERF_LOGGING
 #define PERF_TIME_UNIT std::chrono::microseconds
 
 
@@ -81,6 +82,8 @@ public:
     ~ScopedTimer()
     {
         double time = PERF_END(sectionName);
+    
+        #ifdef ENABLE_PERF_LOGGING
 
         if constexpr (std::is_same_v<PERF_TIME_UNIT, std::chrono::microseconds>)
         {
@@ -98,6 +101,8 @@ public:
         {
             LOG_ERROR("Unsupported time unit: " << typeid(PERF_TIME_UNIT).name());
         }
+
+        #endif
 
     }
 

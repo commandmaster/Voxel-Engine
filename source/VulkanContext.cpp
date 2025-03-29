@@ -543,9 +543,16 @@ namespace VulkanContext
 		{
 			LOG_ERROR("failed to find a suitable GPU!");
 		}
+
 		
+		VkPhysicalDeviceMaintenance3Properties maintenanceProperties{ VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MAINTENANCE_3_PROPERTIES };
 		VkPhysicalDeviceProperties2 prop2{VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2};
+		prop2.pNext = &maintenanceProperties;
+
 		vkGetPhysicalDeviceProperties2(physicalDevice, &prop2);
+
+
+		LOG_NORMAL("Max Memory Allocation Size: " + std::to_string(maintenanceProperties.maxMemoryAllocationSize));
 	}
 
 	void createLogicalDevice()
@@ -691,6 +698,16 @@ namespace VulkanContext
 		createSurface(wnd);
 		pickPhysicalDevice();
 		createLogicalDevice();
+
+		VkPhysicalDeviceMemoryProperties memProperties;
+		vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
+
+		for (uint32_t i = 0; i < memProperties.memoryHeapCount; i++) {
+			std::cout << "Heap " << i << " size: " 
+					  << (memProperties.memoryHeaps[i].size / (1024.0 * 1024.0)) 
+					  << " MB" << std::endl;
+		}
+
 
         VmaAllocatorCreateInfo allocatorInfo = {};
         allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_2;

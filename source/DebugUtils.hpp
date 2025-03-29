@@ -35,7 +35,7 @@ inline std::string vkResultToString(VkResult result)
 
 #define LOG_MODE LOG_ERROR_MODE
 
-#if LOG_MODE <= LOG_ERROR_MODE
+#if LOG_ERROR_MODE <= LOG_MODE
 #define LOG_ERROR(x) \
     do { \
         std::cerr << x << std::endl; \
@@ -53,17 +53,22 @@ inline std::string vkResultToString(VkResult result)
 #endif
 
 
-#if LOG_MODE <= LOG_VERBOSE_MODE
+#if LOG_VERBOSE_MODE <= LOG_MODE
 #define LOG_VERBOSE(x) \
     do { \
         std::cout << x << std::endl; \
     } while (0)
+#define LOG_WARNING(x) \
+    do { \
+        std::cout << "WARNING - " << x << std::endl; \
+    } while (0)
 #else
 #define LOG_VERBOSE(x)
+#define LOG_WARNING(x)   
 #endif
 
 
-#if LOG_MODE <= LOG_NORMAL_MODE
+#if LOG_NORMAL_MODE <= LOG_MODE
 #define LOG_NORMAL(x) \
     do { \
         std::cout << x << std::endl; \

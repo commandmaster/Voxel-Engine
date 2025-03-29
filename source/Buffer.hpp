@@ -185,7 +185,8 @@ public:
         VkDevice device,
         VkDeviceSize bufferSize,
         VkBufferUsageFlags usage,
-        PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR
+        PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR,
+        bool isLargeAllocation = false
     );
 
     void destroy(VmaAllocator allocator)
@@ -273,7 +274,8 @@ inline void Buffer<BufferType::HostVisible>::create(
     VkDevice device,
     VkDeviceSize bufferSize,
     VkBufferUsageFlags usage,
-	PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR
+	PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR,
+    bool isLargeAllocation
 )
 {
     vkGetBufferDeviceAddressKHR = pfn_vkGetBufferDeviceAddressKHR;
@@ -386,10 +388,11 @@ inline void Buffer<BufferType::DeviceLocal>::create(
     VkDevice device,
     VkDeviceSize bufferSize,
     VkBufferUsageFlags usage,
-	PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR
+	PFN_vkGetBufferDeviceAddressKHR pfn_vkGetBufferDeviceAddressKHR,
+    bool isLargeAllocation
 )
 {
-    vkGetBufferDeviceAddressKHR = pfn_vkGetBufferDeviceAddressKHR;
+	vkGetBufferDeviceAddressKHR = pfn_vkGetBufferDeviceAddressKHR;
 
     _isDestroyed = false;
     size = bufferSize;
@@ -404,6 +407,12 @@ inline void Buffer<BufferType::DeviceLocal>::create(
     VmaAllocationCreateInfo allocInfo{};
     allocInfo.usage = VMA_MEMORY_USAGE_GPU_ONLY;
     allocInfo.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+	allocInfo.preferredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+
+    if (isLargeAllocation)
+    {
+        allocInfo.requiredFlags |= VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    }
     
     VkResult result = vmaCreateBuffer(allocator, &bufferInfo, &allocInfo, &handle, &allocation, nullptr);
     if (result != VK_SUCCESS)

@@ -383,13 +383,13 @@ void VoxelEngine::createBLAS()
         return min + random * (max - min);
     };
 
-    const int numRandomSpheres = 500000; 
+    const int numRandomSpheres = 25000000; 
     for (int i = 0; i < numRandomSpheres; ++i)
     {
-        float x = randFloat(-2500.0f, 2500.0f);
-        float y = randFloat(-2500.0f, 2500.0f);
-        float z = randFloat(-2500.0f, 2500.0f);
-        float radius = randFloat(0.5f, 6.0f);
+        float x = randFloat(-10000.0f, 10000.0f);
+        float y = randFloat(-10000.0f, 10000.0f);
+        float z = randFloat(-10000.0f, 10000.0f);
+        float radius = randFloat(3.5f, 12.0f);
         spheres.push_back({ {x, y, z, radius} });
     }
 
@@ -856,10 +856,6 @@ void VoxelEngine::createSphereBuffer()
     sphereBuffer.create(VulkanContext::vmaAllocator, VulkanContext::device, bufferSize, VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT | VK_BUFFER_USAGE_STORAGE_BUFFER_BIT, VulkanContext::vkGetBufferDeviceAddressKHR);
 
     sphereBuffer.uploadData(VulkanContext::vmaAllocator, VulkanContext::device, VulkanContext::graphicsQueue, spheres.data(), bufferSize);
-    
-
-
-
 }
 
 void VoxelEngine::recordFrameCommands(VkCommandBuffer commandBuffer, uint32_t imageIndex, uint32_t currentFrame)

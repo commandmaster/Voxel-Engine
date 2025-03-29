@@ -66,7 +66,8 @@ public:
 			VulkanContext::device,
 			aabbDataSize,
 			aabbBufferUsageFlags,
-			VulkanContext::vkGetBufferDeviceAddressKHR
+			VulkanContext::vkGetBufferDeviceAddressKHR,
+            (aabbDataSize > 100000000) // Greater than 100 MB, get it's own allocation
 		);
 
 		VkDeviceOrHostAddressConstKHR aabbDataDeviceAddress{};
@@ -156,7 +157,7 @@ public:
             throw std::runtime_error("AABB data size in build() does not match size during init().");
         }
 
-		m_aabbBuffer.updateData(VulkanContext::vmaAllocator, aabbData, aabbDataSize);
+        m_aabbBuffer.uploadData(VulkanContext::vmaAllocator, VulkanContext::device, VulkanContext::graphicsQueue, aabbData, aabbDataSize);
 
 		VkAccelerationStructureBuildGeometryInfoKHR buildInfo = m_buildInfo;
 		buildInfo.mode = VK_BUILD_ACCELERATION_STRUCTURE_MODE_BUILD_KHR;
@@ -235,7 +236,7 @@ private:
 	Buffer<BufferType::DeviceLocal> m_buffer;
 
 	uint32_t m_primitiveCount = 0;
-	Buffer<BufferType::HostVisible> m_aabbBuffer;
+	Buffer<BufferType::DeviceLocal> m_aabbBuffer;
 	ScratchBuffer m_scratchBuffer;
 
     VkAccelerationStructureGeometryKHR m_geometry{};

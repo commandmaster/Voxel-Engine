@@ -8,6 +8,8 @@
 #include <vector>
 #include <optional>
 
+#include "DebugUtils.hpp"
+
 
 namespace VulkanContext
 {

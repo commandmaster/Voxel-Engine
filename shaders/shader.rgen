@@ -66,8 +66,8 @@ void main() {
         uint(gl_LaunchIDEXT.z) * gl_LaunchSizeEXT.x * gl_LaunchSizeEXT.y);
     payload.debugColor = vec4(0.0);
 
-    float tMin = 0.003;
-    float tMax = 8000.0;
+    float tMin = 0.005;
+    float tMax = 30000.0;
 
     traceRayEXT(
         topLevelAS,         // accelerationStructure
