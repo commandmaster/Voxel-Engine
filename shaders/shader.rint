@@ -18,7 +18,8 @@ struct HitInformation
 
 hitAttributeEXT HitInformation attribs;
 
-void main() {
+void main() 
+{
     uint sphereIdx = gl_InstanceCustomIndexEXT + gl_PrimitiveID;
     attribs.debugHit = false;
     
@@ -38,19 +39,22 @@ void main() {
     float c = dot(oc, oc) - sphereRadius*sphereRadius;
     float disc = b*b - 4*a*c;
 
-    if (disc >= 0.0) {
+    if (disc >= 0.0)
+    {
         float sqrtDisc = sqrt(disc);
         float t1 = (-b - sqrtDisc) / (2.0 * a);
         float t2 = (-b + sqrtDisc) / (2.0 * a);
 
         float t = min(t1, t2);
-        if (t >= gl_RayTminEXT && t <= gl_RayTmaxEXT) {
+        if (t >= gl_RayTminEXT && t <= gl_RayTmaxEXT) 
+        {
             attribs.hitPositionOS = rayOriginOS + t*rayDirOS;
             attribs.normalOS = normalize(attribs.hitPositionOS - center);
             reportIntersectionEXT(t, 0);
             return;
         } 
-        else if (t2 >= gl_RayTminEXT && t2 <= gl_RayTmaxEXT) {
+        else if (t2 >= gl_RayTminEXT && t2 <= gl_RayTmaxEXT) 
+        {
             t = t2;
             attribs.hitPositionOS = rayOriginOS + t*rayDirOS;
             attribs.normalOS = normalize(attribs.hitPositionOS - center);
