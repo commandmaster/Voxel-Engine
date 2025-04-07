@@ -74,9 +74,6 @@
     <ClCompile Include="source\Chunk.cpp">
       <Filter>source</Filter>
     </ClCompile>
-    <ClCompile Include="source\ECS.cpp">
-      <Filter>source</Filter>
-    </ClCompile>
     <ClCompile Include="source\MemoryClasses.cpp">
       <Filter>source</Filter>
     </ClCompile>

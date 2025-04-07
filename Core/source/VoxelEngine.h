@@ -13,6 +13,7 @@
 #include "backends/imgui_impl_vulkan.h"
 
 #include "Application.h"
+#include "ECS.h"
 
 #include "VulkanContext.h"
 #include "FirstPersonCamera.h"
