@@ -16,6 +16,7 @@
 #include <utility>
 #include <type_traits>
 #include <string_view>
+#include <any>
 
 using IndexType = uint64_t;
 constexpr IndexType INVALID_INDEX = std::numeric_limits<IndexType>::max();
@@ -87,7 +88,7 @@ struct SparseSet : public BaseSparseSet
 		return true;
 	}
 
-    void addEntry(IndexType id, const Type& component)
+    void addComponent(IndexType id, const Type& component)
     {
         if (id >= sparseArr.size()) 
         {
@@ -107,7 +108,7 @@ struct SparseSet : public BaseSparseSet
         }
     }
 
-    void addEntry(IndexType id, Type&& component)
+    void addComponent(IndexType id, Type&& component)
     {
         if (id >= sparseArr.size())
         {
@@ -128,21 +129,21 @@ struct SparseSet : public BaseSparseSet
         }
     }
 
-    void setEntry(IndexType id, const Type& component)
+    void setComponent(IndexType id, const Type& component)
     {
         if (!contains(id))
         {
-            throw std::out_of_range("Id " + std::to_string(id) + " not found in SparseSet::setEntry");
+            throw std::out_of_range("Id " + std::to_string(id) + " not found in SparseSet::setComponent");
         }
         IndexType denseIndex = sparseArr[id];
         denseComponents[denseIndex] = component;
     }
 
-    void setEntry(IndexType id, Type&& component)
+    void setComponent(IndexType id, Type&& component)
     {
         if (!contains(id))
         {
-            throw std::out_of_range("Id " + std::to_string(id) + " not found in SparseSet::setEntry");
+            throw std::out_of_range("Id " + std::to_string(id) + " not found in SparseSet::setComponent");
         }
         IndexType denseIndex = sparseArr[id];
         denseComponents[denseIndex] = std::move(component); 
@@ -194,17 +195,18 @@ struct SparseSet : public BaseSparseSet
     }
 };
 
+
 template<typename... ComponentTypes>
 struct MultiSparseSet : public BaseSparseSet
 {
     static_assert(sizeof...(ComponentTypes) > 0, "MultiSparseSet requires at least one component type.");
+
 
     std::vector<IndexType> sparseArr;
     std::vector<IndexType> elementToIdMap; 
     std::tuple<std::vector<ComponentTypes>...> denseComponents; 
 
     MultiSparseSet() = default; 
-
 
     bool contains(IndexType id) const override
     {
@@ -274,24 +276,24 @@ struct MultiSparseSet : public BaseSparseSet
         return elementToIdMap;
     }
 
-	 void addEntry(IndexType id, const ComponentTypes&... components)
+	void addComponentMulti(IndexType id, const ComponentTypes&... components)
     {
-        addEntryInternal(id, components...);
+        addComponentInternal(id, components...);
     }
 
-    void addEntry(IndexType id, ComponentTypes&&... components)
+    void addComponentMulti(IndexType id, ComponentTypes&&... components)
     {
-        addEntryInternal(id, std::move(components)...);
+        addComponentInternal(id, std::move(components)...);
     }
 
-	void setEntry(IndexType id, const ComponentTypes&... components)
+	void setComponentMulti(IndexType id, const ComponentTypes&... components)
     {
-       setEntryInternal(id, components...);
+       setComponentInternal(id, components...);
     }
 
-    void setEntry(IndexType id, ComponentTypes&&... components)
+    void setComponentMulti(IndexType id, ComponentTypes&&... components)
     {
-        setEntryInternal(id, std::move(components)...);
+        setComponentInternal(id, std::move(components)...);
     }
 
 	std::tuple<ComponentTypes&...> getEntry(IndexType id)
@@ -351,9 +353,9 @@ private:
     }
 
     template<typename... ComponentArgs>
-    void addEntryInternal(IndexType id, ComponentArgs&&... components)
+    void addComponentInternal(IndexType id, ComponentArgs&&... components)
     {
-        static_assert(sizeof...(ComponentArgs) == sizeof...(ComponentTypes), "Incorrect number of components provided to addEntryInternal");
+        static_assert(sizeof...(ComponentArgs) == sizeof...(ComponentTypes), "Incorrect number of components provided to addComponentInternal");
 
         if (id >= sparseArr.size())
         {
@@ -387,13 +389,13 @@ private:
     }
 
     template<typename... ComponentArgs>
-    void setEntryInternal(IndexType id, ComponentArgs&&... components)
+    void setComponentInternal(IndexType id, ComponentArgs&&... components)
     {
-        static_assert(sizeof...(ComponentArgs) == sizeof...(ComponentTypes), "Incorrect number of components provided to setEntryInternal");
+        static_assert(sizeof...(ComponentArgs) == sizeof...(ComponentTypes), "Incorrect number of components provided to setComponentInternal");
 
         if (!contains(id))
         {
-            throw std::out_of_range("Id " + std::to_string(id) + " not found in MultiSparseSet::setEntry");
+            throw std::out_of_range("Id " + std::to_string(id) + " not found in MultiSparseSet::setComponent");
         }
         IndexType denseIndex = sparseArr[id];
         setAllComponents(denseIndex, std::index_sequence_for<ComponentTypes...>{}, std::forward<ComponentArgs>(components)...);
@@ -535,6 +537,8 @@ private:
 
 class ECS
 {
+template <typename... ComponentTypes>
+friend struct GroupMigrator;
 public:
     static constexpr size_t MAX_COMPONENT_TYPES = 64;
     static constexpr size_t MAX_ENTITY_COUNT = 67108864;
@@ -592,8 +596,10 @@ public:
 
         groupPools[index] = std::make_unique<MultiSparseSet<SortedComponentTypes>>();
         groupPoolBitsets[index] = ComponentBitset(0);
+        migrators.emplace_back(std::make_unique<GroupMigrator<ComponentTypes...>>());
 
-		([&]{
+		([&]
+        {
 			size_t typeIndex = TypeRegistry::getID<ComponentTypes>();
 			if (typeIndex >= componentPools.size()) 
 			{
@@ -626,7 +632,7 @@ public:
             id = idCounter++;
         }
 
-        entityComponentMasks.addEntry(id, ComponentBitset(0ULL));
+        entityComponentMasks.addComponent(id, ComponentBitset(0ULL));
 
         return id;
     }
@@ -695,40 +701,92 @@ public:
     template<typename ComponentType>
     bool hasComponent(EntityID id)
     {
-        if (id > idCounter || !entityComponentMasks.contains(id))
+        if (!entityComponentMasks.contains(id))
         {
-            throw std::runtime_error("Invalid entity id in hasComponent");
+             #ifdef DEBUG
+             std::cerr << "Warning: hasComponent called on non-existent or destroyed entity ID " << id << std::endl;
+             #endif
+            return false; 
         }
-        
-        SparseSet<ComponentType>* sparseSetPtr = static_cast<SparseSet<ComponentType>*>(componentPools[TypeRegistry::getID(ComponentType)]);
-        return sparseSetPtr->contains(id);
+
+        size_t componentId = TypeRegistry::getID<ComponentType>();
+        if (componentId >= componentPools.size() || !componentPools[componentId])
+        {
+             throw std::runtime_error("Component type with ID " + std::to_string(componentId) + " not registered (in hasComponent).");
+        }
+
+        const ComponentBitset& mask = entityComponentMasks.getEntry(id);
+        return mask.test(componentId);   
     }
 
 
 	template<typename ComponentType>
     ComponentType& getComponent(EntityID id) const
     {
-        if (id > idCounter || !entityComponentMasks.contains(id))
+        if (!entityComponentMasks.contains(id))
         {
-            throw std::runtime_error("Invalid entity id in getComponent");
+            throw std::out_of_range("Entity ID " + std::to_string(id) + " does not exist (in getComponent).");
         }
 
         size_t componentId = TypeRegistry::getID<ComponentType>();
-
-		if (componentId >= componentPools.size() || !componentPools[componentId]) 
+		if (componentId >= componentPools.size() || !componentPools[componentId])
         {
-            throw std::runtime_error("Component type " + std::to_string(componentId) + " not registered or pool is null.");
+            throw std::runtime_error("Component type " + std::to_string(componentId) + " not registered or pool is null (in getComponent).");
 		}
-        
-        SparseSet<ComponentType>* sparseSetPtr = static_cast<SparseSet<ComponentType>*>(componentPools[componentId].get());
 
-        if (!sparseSetPtr->contains(id))
+        const ComponentBitset& mask = entityComponentMasks.getEntry(id);
+        if (!mask.test(componentId))
         {
-            throw std::runtime_error("Component is not a member of component pool");
+             throw std::runtime_error("Entity ID " + std::to_string(id) + " does not have component " + std::to_string(componentId) + " according to its mask (in getComponent).");
         }
 
-        return sparseSetPtr->getEntry(id);
+        SparseSet<ComponentType>* sparseSetPtr = static_cast<SparseSet<ComponentType>*>(componentPools[componentId].get());
+
+        try 
+        {
+            return sparseSetPtr->getEntry(id);
+        } 
+        catch (const std::out_of_range& e) 
+        {
+             throw std::runtime_error("Component " + std::to_string(componentId) + " for entity " + std::to_string(id) +
+                                      " not found in its individual SparseSet. It might be part of a Component Group. Use getComponentsFromGroup if applicable. Original error: " + e.what());
+        }
     }
+
+    template<typename... ComponentTypes>
+	std::tuple<ComponentTypes&...> getComponentsFromGroup(EntityID id)
+	{
+        static_assert(sizeof...(ComponentTypes) > 0, "Must request at least one component type for a group.");
+
+		using SortedGroupTypes = typename TypeSorting::SortedTypes<ComponentTypes...>;
+		size_t groupIndex = TypeRegistry::getID<SortedGroupTypes>();
+
+        if (groupIndex >= groupPools.size() || !groupPools[groupIndex])
+		{
+			throw std::runtime_error("Component group is not registered (in getComponentsFromGroup).");
+		}
+
+        if (!entityComponentMasks.contains(id))
+        {
+            throw std::out_of_range("Entity ID " + std::to_string(id) + " does not exist (in getComponentsFromGroup).");
+        }
+
+        const ComponentBitset& entityMask = entityComponentMasks.getEntry(id);
+        const ComponentBitset& expectedGroupMask = groupPoolBitsets[groupIndex]; 
+
+        if (entityMask != expectedGroupMask)
+        {
+             throw std::runtime_error("Entity ID " + std::to_string(id) + " has component mask (" + entityMask.to_string() +
+                                      ") which does not exactly match the requested group mask (" + expectedGroupMask.to_string() +
+                                      ") (in getComponentsFromGroup).");
+        }
+
+        auto* multiSet = static_cast<MultiSparseSet<SortedGroupTypes>*>(groupPools[groupIndex].get());
+
+        auto sortedTuple = multiSet->getEntry(id); 
+
+        return std::tie(std::get<ComponentTypes&>(sortedTuple)...);
+	}
 
     template<typename ComponentType>
     void removeComponent(EntityID id)
@@ -942,6 +1000,185 @@ public:
     };
 
 private:
+    struct IGroupMigrator;
+	template <typename NewComponentType>
+	struct IMigratorVisitor;
+
+	enum class MigrationType 
+    {
+		FromGroup,
+		FromIndividual,
+		ToIndividual
+	};
+
+	struct IGroupMigrator 
+    {
+		virtual ~IGroupMigrator() = default;
+		
+		// Base migration functions for different scenarios
+		virtual void migrateFromGroup(ECS* ecs, EntityID id, const ComponentBitset& targetMask, const ComponentBitset& oldMask) = 0;
+		virtual void migrateFromIndividual(ECS* ecs, EntityID id, const ComponentBitset& targetMask, const ComponentBitset& oldMask) = 0;
+		virtual void migrateToIndividual(ECS* ecs, EntityID id, const ComponentBitset& targetMask, const ComponentBitset& oldMask) = 0;
+		
+		template <typename NewComponentType>
+		void accept(IMigratorVisitor<NewComponentType>& visitor, ECS* ecs, EntityID id, 
+					const ComponentBitset& targetMask, const ComponentBitset& oldMask, 
+					NewComponentType&& newData, MigrationType migrationType) 
+        {
+			visitor.visit(*this, ecs, id, targetMask, oldMask, std::forward<NewComponentType>(newData), migrationType);
+		}
+	};
+
+	template <typename... ComponentTypes>
+	struct GroupMigrator : public IGroupMigrator 
+    {
+		// Migration from a group to another group
+		void migrateFromGroup(ECS* ecs, EntityID id, const ComponentBitset& targetMask, const ComponentBitset& oldMask) override 
+        {
+			using SortedGroupTypes = typename TypeSorting::SortedTypes<ComponentTypes...>; 
+			size_t groupIndex = TypeRegistry::getID<SortedGroupTypes>();
+
+			if (groupIndex >= ecs->groupPools.size() || !ecs->groupPools[groupIndex]) {
+				throw std::runtime_error("Target group pool for migration does not exist.");
+			}
+
+			MultiSparseSet<SortedGroupTypes>* multiSet = 
+				static_cast<MultiSparseSet<SortedGroupTypes>*>(ecs->groupPools[groupIndex].get());
+
+			// Get all components from the entity
+			multiSet->addComponentMulti(id, ecs->getComponent<ComponentTypes>(id)...);
+
+			// Update the component mask
+			ComponentBitset& mask = ecs->entityComponentMasks.getEntry(id);
+			mask = targetMask;
+		}
+
+		// Migration from individual components to a group
+		void migrateFromIndividual(ECS* ecs, EntityID id, const ComponentBitset& targetMask, const ComponentBitset& oldMask) override 
+        {
+			using SortedGroupTypes = typename TypeSorting::SortedTypes<ComponentTypes...>; 
+			size_t groupIndex = TypeRegistry::getID<SortedGroupTypes>();
+
+			if (groupIndex >= ecs->groupPools.size() || !ecs->groupPools[groupIndex]) 
+            {
+				throw std::runtime_error("Target group pool for migration does not exist.");
+			}
+
+			MultiSparseSet<SortedGroupTypes>* multiSet = 
+				static_cast<MultiSparseSet<SortedGroupTypes>*>(ecs->groupPools[groupIndex].get());
+
+			// Get all components from individual sets and add to group
+			multiSet->addComponentMulti(id, ecs->getComponent<ComponentTypes>(id)...);
+
+			// Remove components from individual sets
+			ComponentBitset& mask = ecs->entityComponentMasks.getEntry(id);
+			([&] {
+				size_t componentId = TypeRegistry::getID<ComponentTypes>();
+				if (ecs->componentPools[componentId]) { 
+					auto* singleSet = static_cast<SparseSet<ComponentTypes>*>(ecs->componentPools[componentId].get());
+					if (singleSet->contains(id)) { 
+						singleSet->deleteEntry(id);
+					}
+				}
+			}(), ...);
+			
+			mask = targetMask;
+		}
+
+		// Migration from a group to individual components
+		void migrateToIndividual(ECS* ecs, EntityID id, const ComponentBitset& targetMask, const ComponentBitset& oldMask) override 
+        {
+			// First get all components from the group
+			using SortedGroupTypes = typename TypeSorting::SortedTypes<ComponentTypes...>; 
+			size_t groupIndex = TypeRegistry::getID<SortedGroupTypes>();
+
+			if (groupIndex >= ecs->groupPools.size() || !ecs->groupPools[groupIndex]) 
+            {
+				throw std::runtime_error("Source group pool for migration does not exist.");
+			}
+
+			MultiSparseSet<SortedGroupTypes>* multiSet = static_cast<MultiSparseSet<SortedGroupTypes>*>(ecs->groupPools[groupIndex].get());
+
+			// Add components to individual sets
+			([&] {
+				auto& component = multiSet->template getComponent<ComponentTypes>(id);
+				size_t componentId = TypeRegistry::getID<ComponentTypes>();
+				
+				if (componentId >= ecs->componentPools.size() || !ecs->componentPools[componentId]) 
+                {
+					ecs->componentPools[componentId] = std::make_unique<SparseSet<ComponentTypes>>();
+				}
+				
+				auto* singleSet = static_cast<SparseSet<ComponentTypes>*>(ecs->componentPools[componentId].get());
+				singleSet->addComponent(id, std::move(component));
+			}(), ...);
+
+			// Remove from group
+			multiSet->deleteEntry(id);
+
+			// Update the component mask
+			ComponentBitset& mask = ecs->entityComponentMasks.getEntry(id);
+			mask = targetMask;
+		}
+
+		// Migration with new component data
+		template <typename NewComponentType>
+		void migrate(ECS* ecs, EntityID id, const ComponentBitset& targetMask, 
+					 const ComponentBitset& oldMask, NewComponentType&& newData, MigrationType migrationType) 
+        {
+			switch (migrationType) 
+            {
+			case MigrationType::FromGroup:
+				migrateFromGroup(ecs, id, targetMask, oldMask);
+				break;
+			case MigrationType::FromIndividual:
+				migrateFromIndividual(ecs, id, targetMask, oldMask);
+				break;
+			case MigrationType::ToIndividual:
+				migrateToIndividual(ecs, id, targetMask, oldMask);
+				break;
+			}
+		}
+		
+		template <typename NewComponentType>
+		void accept(IMigratorVisitor<NewComponentType>& visitor, ECS* ecs, EntityID id, 
+					const ComponentBitset& targetMask, const ComponentBitset& oldMask, 
+					NewComponentType&& newData, MigrationType migrationType) {
+			visitor.visit(*this, ecs, id, targetMask, oldMask, std::forward<NewComponentType>(newData), migrationType);
+		}
+	};
+
+	template <typename NewComponentType>
+	struct IMigratorVisitor {
+		virtual ~IMigratorVisitor() = default;
+		
+		template <typename... ComponentTypes>
+		void visit(GroupMigrator<ComponentTypes...>& migrator, ECS* ecs, EntityID id, 
+				   const ComponentBitset& targetMask, const ComponentBitset& oldMask, 
+				   NewComponentType&& newData, MigrationType migrationType) {
+			migrator.migrate(ecs, id, targetMask, oldMask, std::forward<NewComponentType>(newData), migrationType);
+		}
+		
+		virtual void visit(IGroupMigrator& migrator, ECS* ecs, EntityID id, 
+						   const ComponentBitset& targetMask, const ComponentBitset& oldMask, 
+						   NewComponentType&& newData, MigrationType migrationType) 
+        {
+			switch (migrationType) 
+            {
+				case MigrationType::FromGroup:
+					migrator.migrateFromGroup(ecs, id, targetMask, oldMask);
+					break;
+				case MigrationType::FromIndividual:
+					migrator.migrateFromIndividual(ecs, id, targetMask, oldMask);
+					break;
+				case MigrationType::ToIndividual:
+					migrator.migrateToIndividual(ecs, id, targetMask, oldMask);
+					break;
+			}
+		}
+	};
+
+
 	std::vector<EntityID> reusableIds;
 
     std::vector<std::unique_ptr<BaseSparseSet>> componentPools;
@@ -949,6 +1186,8 @@ private:
 
     std::vector<std::unique_ptr<BaseSparseSet>> groupPools;
     std::vector<ComponentBitset> groupPoolBitsets;
+    std::vector<std::unique_ptr<IGroupMigrator>> migrators;
+
 
     SparseSet<ComponentBitset> entityComponentMasks;
     
@@ -969,16 +1208,63 @@ private:
              throw std::runtime_error("Component type not registered (in addComponent).");
          }
 
-         ComponentBitset& mask = entityComponentMasks.getEntry(id); 
-         if (mask.test(componentId)) 
+         ComponentBitset& currentMask = entityComponentMasks.getEntry(id); 
+         if (currentMask.test(componentId)) 
          {
              throw std::runtime_error("Entity ID " + std::to_string(id) + " already has component " + std::to_string(componentId) + " (checked via mask).");
          }
 
-         SparseSet<ComponentType>* sparseSetPtr = static_cast<SparseSet<ComponentType>*>(componentPools[componentId].get());
-         sparseSetPtr->addEntry(id, std::forward<ComponentArg>(component));
+         ComponentBitset oldMask = currentMask;
+         ComponentBitset newMask = oldMask;
 
-         mask.set(componentId);
+         newMask.set(componentId, true);
+
+         IndexType foundIndex = INVALID_INDEX;
+         IndexType srcGroupIndex = INVALID_INDEX;
+         for (IndexType i = 0; i < groupPoolBitsets.size(); ++i)
+         {
+			if (groupPoolBitsets[i] == newMask)
+			{
+                foundIndex = i;
+			}
+            if (groupPoolBitsets[i] == oldMask)
+            {
+                srcGroupIndex = i;
+            }
+         }
+
+        switch ((foundIndex != INVALID_INDEX) << 1 | (srcGroupIndex != INVALID_INDEX))
+		{
+		case 0b11: // foundIndex != INVALID_INDEX && srcGroupIndex != INVALID_INDEX
+		{
+			IMigratorVisitor<ComponentType> visitor;
+			auto& migrator = migrators[foundIndex];
+			migrator->accept(visitor, this, id, newMask, oldMask, std::forward<ComponentArg>(component), MigrationType::FromGroup);
+			break;
+		}
+		case 0b10: // foundIndex != INVALID_INDEX && srcGroupIndex == INVALID_INDEX
+		{
+			IMigratorVisitor<ComponentType> visitor;
+			auto& migrator = migrators[foundIndex];
+			migrator->accept(visitor, this, id, newMask, oldMask, std::forward<ComponentArg>(component), MigrationType::FromIndividual);
+			break;
+		}
+		case 0b01: // foundIndex == INVALID_INDEX && srcGroupIndex != INVALID_INDEX
+		{
+			IMigratorVisitor<ComponentType> visitor;
+			auto& migrator = migrators[srcGroupIndex];
+			migrator->accept(visitor, this, id, newMask, oldMask, std::forward<ComponentArg>(component), MigrationType::ToIndividual);
+			break;
+		}
+		case 0b00: // foundIndex == INVALID_INDEX && srcGroupIndex == INVALID_INDEX
+		{
+			SparseSet<ComponentType>* sparseSetPtr = static_cast<SparseSet<ComponentType>*>(componentPools[componentId].get());
+			sparseSetPtr->addComponent(id, std::forward<ComponentArg>(component));
+			currentMask = newMask;
+			break;
+		}
+		}
+         
     }
 
     

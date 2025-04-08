@@ -618,62 +618,20 @@ namespace VulkanContext
 		vkGetDeviceQueue(device, indices.graphicsFamily.value(), 0, &graphicsQueue);
 		vkGetDeviceQueue(device, indices.presentFamily.value(), 0, &presentQueue);
 
-		vkQueueSubmit2KHR = 
-			reinterpret_cast<PFN_vkQueueSubmit2KHR>(
-				vkGetDeviceProcAddr(device, "vkQueueSubmit2KHR")
-			);
+		#define REGISTER_PFN(vkFunction) \
+			vkFunction = reinterpret_cast<PFN_##vkFunction>(vkGetDeviceProcAddr(device, #vkFunction));
 
-		vkGetAccelerationStructureBuildSizesKHR = 
-			reinterpret_cast<PFN_vkGetAccelerationStructureBuildSizesKHR>(
-				vkGetDeviceProcAddr(device, "vkGetAccelerationStructureBuildSizesKHR")
-			);
-
-		vkCreateAccelerationStructureKHR = 
-			reinterpret_cast<PFN_vkCreateAccelerationStructureKHR>(
-				vkGetDeviceProcAddr(device, "vkCreateAccelerationStructureKHR")
-			);
-
-		vkGetAccelerationStructureDeviceAddressKHR = 
-			reinterpret_cast<PFN_vkGetAccelerationStructureDeviceAddressKHR>(
-				vkGetDeviceProcAddr(device, "vkGetAccelerationStructureDeviceAddressKHR")
-			);
-
-		vkCmdBuildAccelerationStructuresKHR = 
-			reinterpret_cast<PFN_vkCmdBuildAccelerationStructuresKHR>(
-				vkGetDeviceProcAddr(device, "vkCmdBuildAccelerationStructuresKHR")
-			);
-
-		vkBuildAccelerationStructuresKHR = 
-			reinterpret_cast<PFN_vkBuildAccelerationStructuresKHR>(
-				vkGetDeviceProcAddr(device, "vkBuildAccelerationStructuresKHR")
-			);
-
-		vkDestroyAccelerationStructureKHR = 
-			reinterpret_cast<PFN_vkDestroyAccelerationStructureKHR>(
-				vkGetDeviceProcAddr(device, "vkDestroyAccelerationStructureKHR")
-			);
-
-		vkGetRayTracingShaderGroupHandlesKHR = 
-			reinterpret_cast<PFN_vkGetRayTracingShaderGroupHandlesKHR>(
-				vkGetDeviceProcAddr(device, "vkGetRayTracingShaderGroupHandlesKHR")
-			);
-
-		vkGetBufferDeviceAddressKHR = 
-			reinterpret_cast<PFN_vkGetBufferDeviceAddressKHR>(
-				vkGetDeviceProcAddr(device, "vkGetBufferDeviceAddressKHR")
-			);
-
-		vkCreateRayTracingPipelinesKHR = 
-			reinterpret_cast<PFN_vkCreateRayTracingPipelinesKHR>(
-				vkGetDeviceProcAddr(device, "vkCreateRayTracingPipelinesKHR")
-			);
-
-		vkCmdTraceRaysKHR =
-			reinterpret_cast<PFN_vkCmdTraceRaysKHR>(
-				vkGetDeviceProcAddr(device, "vkCmdTraceRaysKHR")
-			);
-
-
+		REGISTER_PFN(vkQueueSubmit2KHR);
+		REGISTER_PFN(vkGetAccelerationStructureBuildSizesKHR);
+		REGISTER_PFN(vkCreateAccelerationStructureKHR);
+		REGISTER_PFN(vkGetAccelerationStructureDeviceAddressKHR);
+		REGISTER_PFN(vkCmdBuildAccelerationStructuresKHR);
+		REGISTER_PFN(vkBuildAccelerationStructuresKHR);
+		REGISTER_PFN(vkDestroyAccelerationStructureKHR);
+		REGISTER_PFN(vkGetRayTracingShaderGroupHandlesKHR);
+		REGISTER_PFN(vkGetBufferDeviceAddressKHR);
+		REGISTER_PFN(vkCreateRayTracingPipelinesKHR);
+		REGISTER_PFN(vkCmdTraceRaysKHR);
 	}
 
 	void createCommandPool()
