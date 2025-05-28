@@ -20,6 +20,8 @@
 #include <algorithm>
 #include <numeric>
 #include <map>
+#include <entt.hpp>
+
 
 using IndexType = uint64_t;
 constexpr IndexType INVALID_INDEX = std::numeric_limits<IndexType>::max();

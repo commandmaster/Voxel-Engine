@@ -11,7 +11,7 @@ project "App"
    {
         "../Vendor/imgui",
         "../Vendor/glfw/include",
-
+        "../Vendor/entt",
        
         "%{IncludeDir.VulkanSDK}",
         "%{IncludeDir.glm}",

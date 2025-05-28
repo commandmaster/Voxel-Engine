@@ -13,3 +13,8 @@ bin/
 *.pdb
 *.obj
 *.res
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+

@@ -90,7 +90,8 @@ public:
 
 		float angle = 0.0f;
         
-		while (!glfwWindowShouldClose(window)) {
+		while (!glfwWindowShouldClose(window)) 
+        {
 			frameTimer.start();
 			
 			glfwPollEvents();
@@ -135,7 +136,7 @@ public:
 
             float time = (float)glfwGetTime();
 
-            float degToRad = glm::pi<float>() / 180.0f;
+            constexpr float degToRad = glm::pi<float>() / 180.0f;
 
             VkTransformMatrixKHR transform =
             {
